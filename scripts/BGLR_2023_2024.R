@@ -15,6 +15,4 @@ ETA <- list(list(X=incLocations, model="FIXED"),
             list(X=incPeaAcc, model="BRR"))
 Specifications
 
-
-
-Print("Hello Peter")
+Print("Test")
