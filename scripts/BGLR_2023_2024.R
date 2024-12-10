@@ -1,4 +1,6 @@
 
+
+
 #### Importing Genotype data and creating Relationship matrix
 
 library(vcfR)  # https://grunwaldlab.github.io/Population_Genetics_in_R/reading_vcf.html
