@@ -20,20 +20,21 @@
 #          source (an alternate source, such as a plot, subplot, or plant identifier from which the seed was collected)
 # 
 
-
-
 library(tidyverse)
 library(readr)
 library(readxl)
+
+# Source must be in T3-Oat if source is unknown in the case of acquisition seed leave it blank ("") and add any info to description. 
 
 
 # The following script is used to convert the reweighed sub samples of the source seed for the 2023 spring oat-pea trial.
 # This seedlot is a subset that was pulled for genotypeing and will be used for crossing. 
 
 
+
 # Import the seed weights 
 
-source  <- spring_oat_source_seed <- read_excel("data/spring_oat_source_seed.xlsx")
+seed_inventory  <- spring_oat_source_seed <- read_excel("data/spring_oat_source_seed.xlsx")
 
 
 
@@ -53,17 +54,17 @@ seedlot_header <- c("seedlot_name","accession_name","operator_name","amount","we
 # {accession_name}-acquisition-oatEntry_{oatEntry}
 
 
-source %>% 
+seed_inventory %>% 
   
   mutate(seedlot_name = str_c(accession_name,"-acquisition-oatEntry_",oatEntry)) %>% 
   mutate(accession_name = accession_name) %>% 
   mutate(operator_name = operator_name) %>% 
   mutate(amount = "") %>% 
   mutate(weight_gram = weight_g) %>% 
-  mutate(description = description) %>% 
+  mutate(description = str_c(description," source_", source)) %>% 
   mutate(box_name = box_name) %>% 
   mutate(quality = quality) %>% 
-  mutate(source = source) %>% 
+  mutate(source = "") %>% 
   
   select(all_of(seedlot_header)) %>% 
   
