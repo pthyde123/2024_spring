@@ -48,15 +48,16 @@ seedlot_header <- c("seedlot_name","accession_name","operator_name","amount","we
 
 
 # format of the seedlot name, this is acquisition seed so there are no trials or plot number
+# make the acquisition something unique and text searchable.  This will enable identifying this set of seedlots in the search wizard. 
 
 
+# {accession_name}-A-2023-SOPF-oatEntry_{oatEntry}
 
-# {accession_name}-acquisition-oatEntry_{oatEntry}
-
+# Spring Oat Pea Founders (SOPF)
 
 seed_inventory %>% 
   
-  mutate(seedlot_name = str_c(accession_name,"-acquisition-oatEntry_",oatEntry)) %>% 
+  mutate(seedlot_name = str_c(accession_name,"-A-2023-SOPF-oatEntry_",oatEntry)) %>% 
   mutate(accession_name = accession_name) %>% 
   mutate(operator_name = operator_name) %>% 
   mutate(amount = "") %>% 
