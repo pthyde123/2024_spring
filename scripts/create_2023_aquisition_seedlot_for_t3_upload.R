@@ -67,7 +67,7 @@ source %>%
   
   select(all_of(seedlot_header)) %>% 
   
-  write.csv("data/2023_spring_oat_source_seedlot_t3_upload", row.names = FALSE)
+  write.csv("data/2023_spring_oat_source_seedlot_t3_upload.csv", row.names = FALSE)
 
 
 
