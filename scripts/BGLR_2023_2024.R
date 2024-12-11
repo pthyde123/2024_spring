@@ -11,7 +11,7 @@ library(rrBLUP)
 
 
 # on my scratch pad I usually use df and clean it up later
-vcf <- read.vcfR("data/Practice_34_genotypes.vcf")
+vcf <- read.vcfR("data/SOPF_48_genotypes.vcf")  ## this still isnt all of the genotypes
 
 head(getFIX(vcf))
 
@@ -34,9 +34,12 @@ df <- t(df) # transpose so genotypes are row names
   # remove samples with to many NA's
   # remove samples with to many heterozygous markers
 
-RM <- A.mat(df) # calculate relationship matrix
+GRM <- A.mat(df) # calculate relationship matrix
 
-RM
+GRM
+
+#next step
+###use K = Z %*% GRM %*% t(Z),  Z is incidence matrix
 
 
 ####
