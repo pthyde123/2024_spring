@@ -1,4 +1,5 @@
-
+#### Importing Phenotype file (Leah complied in other scripts and added a copy to the shared directory)
+multi_location_data <- read.csv("/Users/leahtreffer/GitHub/Peter_2024_spring/Peter_2024_spring/data/2023_2024_multi_location.csv")
 
 
 #### Importing Genotype data and creating Relationship matrix
@@ -8,7 +9,6 @@ library(tidyverse)
 library(genomicMateSelectR) #Cool this is Marnin's
 ##https://wolfemd.github.io/genomicMateSelectR/reference/index.html
 library(rrBLUP)
-
 
 # on my scratch pad I usually use df and clean it up later
 vcf <- read.vcfR("data/SOPF_48_genotypes.vcf")  ## this still isnt all of the genotypes
