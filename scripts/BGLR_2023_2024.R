@@ -32,6 +32,7 @@ df[df == "1/1"] <- 1
 
 df <- df %>%  mutate_if(is.character, as.numeric) # set all columns to numeric
 
+
 df <- t(df) # transpose so genotypes are row names
 
 # more clean up might be needed 
@@ -135,6 +136,63 @@ oatEff %>%
   arrange(-SI_2)
 
 
+
+
+
+
+
+#### Making GRM with the VCF file Mirza created in using GenomeStudio ####
+# The upload of this data to T3 is proving tricky due to call formats
+# Should be able to merge this with the genotype data from T3 and move forward
+
+# Next step, select the accessions that are not on T3, (there are duplicates)
+# merge them into a df that has 48 accessions 
+
+
+
+library(vcfR)  # https://grunwaldlab.github.io/Population_Genetics_in_R/reading_vcf.html
+library(tidyverse)
+library(genomicMateSelectR) #Cool this is Marnin's
+##https://wolfemd.github.io/genomicMateSelectR/reference/index.html
+library(rrBLUP)
+
+# on my scratch pad I usually use df and clean it up later
+vcf <- read.vcfR("data/JL01.vcf")  ##
+
+library(readxl)
+Jl01_vcf_accession <- read_excel("data/Jl01_vcf_sample_name_to_accession_name.xlsx")
+
+accession <- Jl01_vcf_accession$accession
+
+
+head(getFIX(vcf))
+
+marker_id <-  getFIX(vcf)[,3]  # get a list of the marker names
+
+df <- as.data.frame(vcf@gt) # save as a dataframe
+
+row.names(df) <- marker_id # set the column names as marker names  
+
+df[df == "AA"] <- 1
+df[df == "AB"] <- 0
+df[df == "BB"] <- -1
+df[df == "NULL"] <- NA
+df[df == "NC"] <- NA
+
+df <- df %>%  mutate_if(is.character, as.numeric) # set all columns to numeric
+
+colnames(df) <- accession 
+
+df <- df %>% 
+  select("A25":"WI_X10710-7", "A10")
+
+df <- t(df)
+
+df
+
+GRM <- A.mat(df) # calculate relationship matrix
+
+GRM
 
 
 
