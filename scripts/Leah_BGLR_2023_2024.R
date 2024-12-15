@@ -1,7 +1,12 @@
 # read in phenotype data
 multi_location_data <- read.csv("/Users/leahtreffer/GitHub/Peter_2024_spring/Peter_2024_spring/data/2023_2024_multi_location.csv")
 
-
+library(vcfR)  # https://grunwaldlab.github.io/Population_Genetics_in_R/reading_vcf.html
+library(tidyverse)
+devtools::install_github("wolfemd/genomicMateSelectR", ref = 'master') 
+library(genomicMateSelectR) #Cool this is Marnin's
+##https://wolfemd.github.io/genomicMateSelectR/reference/index.html
+library(rrBLUP)
 
 # need to add genotype data to this
 grainWgt <- multi_location_data %>%
