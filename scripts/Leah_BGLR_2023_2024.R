@@ -8,6 +8,14 @@ library(genomicMateSelectR) #Cool this is Marnin's
 ##https://wolfemd.github.io/genomicMateSelectR/reference/index.html
 library(rrBLUP)
 
+
+# Genotype data
+
+
+
+
+
+
 # need to add genotype data to this
 grainWgt <- multi_location_data %>%
   mutate(oatYield = oat_yield) %>%
