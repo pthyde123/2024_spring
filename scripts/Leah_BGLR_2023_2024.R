@@ -1,3 +1,13 @@
+library(tidyverse)
+library(readr)
+library(kableExtra)
+library(here)
+require(BGLR)
+library(genomicMateSelectR) 
+library(janitor)
+library(ggplot2)
+library(ggrepel) 
+
 # read in phenotype data
 ##multi_location_data <- read.csv("/Users/leahtreffer/GitHub/Peter_2024_spring/Peter_2024_spring/data/2023_2024_multi_location.csv")
 
@@ -18,7 +28,52 @@ library(rrBLUP)
 
 # Genotype data
 
+##genomic data (snp data)
+###Genotype data as GRM
+Mirza_WOgenotype <- read.csv("/Users/leahtreffer/GitHub/Mirza_savedCombineJL.csv") |> 
+  column_to_rownames(var = "rowname") # Mirza's data as reference
+WOgenotype <- 
 
+#convert to -1,0,1
+WOgenotype <- WOgenotype - 1
+
+#find out the accessions that are in intercrop trial and genotype data
+##Since the format of the accession names are different, I will modify the names first
+#standardize the format to find the same accession name
+interAcc <- doublePlot |> 
+  select(accession) |> 
+  unique() |> 
+  mutate(accession_2 = toupper(accession)) |> 
+  mutate(accession_2 = gsub("[ _-]", "", accession_2))
+
+WOgenotype <- WOgenotype |> 
+  rownames_to_column(var = "accession")
+
+genotypeAcc <- WOgenotype |> 
+  mutate(accession_2 = toupper(accession)) |> 
+  mutate(accession_2 = gsub("[ _-]", "", accession_2)) 
+
+#using synonym
+selected_rows <- genotypeAcc |> 
+  filter(accession %in% c("PI555733", "PI555736")) #PA7617-3658 and PA7617-3460
+
+#New genotype matrix
+#the same accessions
+genotypeMatrix <- genotypeAcc |> 
+  semi_join(interAcc, c("accession_2" = "accession_2")) |> 
+  rbind(selected_rows)
+
+#delete the last columns
+genotypeMatrix <- genotypeMatrix[, -ncol(genotypeMatrix)] |> 
+  column_to_rownames(var = "accession") #56 accessions and for relationship matrix
+
+#different accessions: to get info for missing genotype data
+diffAccMatrix <- interAcc |>
+  anti_join(genotypeAcc, c("accession_2" = "accession_2")) |> 
+  filter(accession != "PA7617-3658", accession != "PA7617-3460") #38 accessions
+
+# write.csv(genotypeMatrix, here::here("Output","SameAccessionMatrixGenotype.csv"), col.names = T)
+# write.csv(diffAccMatrix, here::here("Output","DiffAccessionMatrixGenotype.csv"), col.names = T)
 
 
 
@@ -69,6 +124,10 @@ ETA <- list(list(X=incLocations, model="FIXED"),
 
 # then run BGLR::Multitrait
 
+
+#Selection index for oat:
+##Pr + As = good oats + good on pea
+##Pr - As = good oat + not good pea
 
 
 
