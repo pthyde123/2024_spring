@@ -15,17 +15,34 @@ library(genomicMateSelectR) #Cool this is Marnin's
 library(rrBLUP)
 
 # on my scratch pad I usually use df and clean it up later
-vcf <- read.vcfR("data/SOPF_48_genotypes.vcf")  ## this still only 34 genotypes
+# load in the 34 genotypes 
+vcf_34 <- read.vcfR("data/SOPF_48_genotypes.vcf")  ## this still only 34 genotypes
 
-head(getFIX(vcf))
+head(getFIX(vcf_34))
 
-marker_id <-  getFIX(vcf)[,3]  # get a list of the marker names
+marker_id <-  getFIX(vcf_34)[,3]  # get a list of the marker names
 
-df <- as.data.frame(vcf@gt) %>% # save as a dataframe
+df_34 <- as.data.frame(vcf_34@gt) %>% # save as a dataframe
   select(-FORMAT) # remove the FORMAT column
 
-row.names(df) <- marker_id # set the column names as marker names
+row.names(df_34) <- marker_id # set the column names as marker names
 
+# load in the other genotypes 
+vcf_14 <- read.vcfR("data/")  ## this will be the file with the other 14 genotypes
+
+head(getFIX(vcf_14))
+
+marker_id <-  getFIX(vcf_14)[,3]  # get a list of the marker names
+
+df_14 <- as.data.frame(vcf_14@gt) %>% # save as a dataframe
+  select(-FORMAT) # remove the FORMAT column
+
+row.names(df_14) <- marker_id # set the column names as marker names
+
+# combine using an outer join to keep all rows even if NA
+df <- merge(df_34, df_14, by=0, all=TRUE) # 'by=0' should merge based on rowname
+
+# convert to  -1,0,1 format
 df[df == "0/0"] <- -1   # rename calls
 df[df == "0/1"] <- 0
 df[df == "1/1"] <- 1
