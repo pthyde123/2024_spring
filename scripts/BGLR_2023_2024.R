@@ -14,6 +14,16 @@ library(genomicMateSelectR) #Cool this is Marnin's
 ##https://wolfemd.github.io/genomicMateSelectR/reference/index.html
 library(rrBLUP)
 
+
+#### List of all 48 accessions ####
+
+accessions_48 <- unique(multi_location_data$germplasmName)
+
+####
+
+GRM <- read_tsv("data/SOPF_48_GRM_t3.tsv")  ## I downloaded the GRM strait from t3, cool, but it looks like not all the accessions from Juan are on t3. we are missing 2 but can move forward
+
+
 # on my scratch pad I usually use df and clean it up later
 # load in the 34 genotypes 
 vcf_34 <- read.vcfR("data/SOPF_48_genotypes.vcf")  ## this still only 34 genotypes
@@ -26,6 +36,24 @@ df_34 <- as.data.frame(vcf_34@gt) %>% # save as a dataframe
   select(-FORMAT) # remove the FORMAT column
 
 row.names(df_34) <- marker_id # set the column names as marker names
+
+accessions_34 <- colnames(df_34)
+
+# convert to  -1,0,1 format
+df_34[df_34 == "0/0"] <- -1   # rename calls
+df_34[df_34 == "0/1"] <- 0
+df_34[df_34 == "1/1"] <- 1
+
+df_34 <- df_34 %>%  mutate_if(is.character, as.numeric) # set all columns to numeric
+
+
+df_34 <- t(df_34) # transpose so genotypes are row names
+
+# more clean up might be needed 
+# remove samples with to many NA's
+# remove samples with to many heterozygous markers
+
+
 
 # load in the other genotypes 
 vcf_14 <- read.vcfR("data/")  ## this will be the file with the other 14 genotypes
@@ -42,21 +70,12 @@ row.names(df_14) <- marker_id # set the column names as marker names
 # combine using an outer join to keep all rows even if NA
 df <- merge(df_34, df_14, by=0, all=TRUE) # 'by=0' should merge based on rowname
 
-# convert to  -1,0,1 format
-df[df == "0/0"] <- -1   # rename calls
-df[df == "0/1"] <- 0
-df[df == "1/1"] <- 1
-
-df <- df %>%  mutate_if(is.character, as.numeric) # set all columns to numeric
 
 
-df <- t(df) # transpose so genotypes are row names
 
-# more clean up might be needed 
-  # remove samples with to many NA's
-  # remove samples with to many heterozygous markers
 
 GRM <- A.mat(df) # calculate relationship matrix
+
 
 GRM
 
@@ -152,11 +171,18 @@ oatEff %>%
   mutate(SI_2 = (PrEff - AsEff)) %>% 
   arrange(-SI_2)
 
+#### List of all 48 accessions
+
+accessions_48 <- unique(multi_location_data$germplasmName)
 
 
 
 
 
+
+
+
+## might need to use this for the 2 accessions Juan has not uploaded (LEGGETT and NEWBURG), we have the marker data. 
 
 #### Making GRM with the VCF file Mirza created in using GenomeStudio ####
 # The upload of this data to T3 is proving tricky due to call formats
@@ -179,7 +205,7 @@ vcf <- read.vcfR("data/JL01.vcf")  ##
 library(readxl)
 Jl01_vcf_accession <- read_excel("data/Jl01_vcf_sample_name_to_accession_name.xlsx")
 
-accession <- Jl01_vcf_accession$accession
+accession_JL01 <- Jl01_vcf_accession$accession
 
 
 head(getFIX(vcf))
@@ -203,14 +229,25 @@ colnames(df) <- accession
 df <- df %>% 
   select("A25":"WI_X10710-7", "A10")
 
+df <- df %>% 
+  select(c(accessions_14$value))
+
+
 df <- t(df)
 
 df
+
+
+
 
 GRM <- A.mat(df) # calculate relationship matrix
 
 GRM
 
-
-
+####
+accessions_14 <- accessions_48 %>% 
+  as_tibble() %>% 
+  filter(! value %in% (accessions_34))
+  
+accessions_14$value  
 
