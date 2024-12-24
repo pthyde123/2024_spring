@@ -156,3 +156,47 @@ print(results)
 
 
 
+
+
+library(BGLR)
+library(coda)
+
+# Function to run BGLR with different initial seeds
+run_multiple_chains <- function(Y, ETA, nChains = 3, nIter = 10000, burnIn = 2000) {
+  chains <- list()
+  
+  for (i in 1:nChains) {
+    set.seed(i) # Set a unique seed for each chain
+    fit <- BGLR::Multitrait(
+      y = Y,
+      ETA = ETA,
+      nIter = nIter,
+      burnIn = burnIn,
+      verbose = FALSE
+    )
+    # Store posterior samples of a key parameter
+    chains[[i]] <- as.mcmc(fit$ETA[[1]]$b) # Adjust to the desired parameter
+  }
+  
+  # Combine chains for Gelman-Rubin diagnostic
+  combined_chains <- mcmc.list(chains)
+  gelman_diag <- gelman.diag(combined_chains)
+  
+  # Return results
+  return(list(chains = combined_chains, gelman_diag = gelman_diag))
+}
+
+# Example usage
+# Dummy data (replace with real Y and ETA)
+Y <- matrix(rnorm(100), nrow=10, ncol=2) # 10 observations, 2 traits
+ETA <- list(list(K=diag(10), model="RKHS")) # Example ETA, replace as needed
+
+# Run function
+result <- run_multiple_chains(Y, ETA, nChains = 3, nIter = 5000, burnIn = 1000)
+
+# Diagnostics
+print(result$gelman_diag)  # Gelman-Rubin diagnostic
+plot(result$chains)        # Trace plots for all chains
+
+
+
