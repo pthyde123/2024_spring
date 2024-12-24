@@ -199,9 +199,9 @@ print(result$gelman_diag)  # Gelman-Rubin diagnostic
 plot(result$chains)        # Trace plots for all chains
 
 
+#####
 
-
-Y <- matrix(rnorm(100), nrow=802, ncol=2) # 10 observations, 2 traits
+Y <- matrix(rnorm(100), nrow=802, ncol=2) # 802 observations, 2 traits (just like our data)
 ETA <- list(list(K=diag(802), model="RKHS")) # Example ETA, replace as needed
 
 run_multiple_chains <- function(Y, ETA, nChains = 3, nIter = 10000, burnIn = 2000) {
@@ -219,7 +219,7 @@ run_multiple_chains <- function(Y, ETA, nChains = 3, nIter = 10000, burnIn = 200
       burnIn = burnIn,
       verbose = FALSE
     )
-    # Store posterior samples of a key parameter
+    # Store posterior samples of a key parameter(s)
     chains[[i]] <- as.mcmc(fit$ETA[[1]]$b) # Adjust to the desired parameter
     ess[[i]]  <- effectiveSize(chains[[i]])
     gelman[[i]]  <- tryCatch(gelman.diag(as.mcmc.list(list(chains[[i]])), autoburnin = FALSE), error = function(e) NULL)
@@ -236,10 +236,10 @@ run_multiple_chains <- function(Y, ETA, nChains = 3, nIter = 10000, burnIn = 200
 }
 
 # Run function
-result <- run_multiple_chains(Y, ETA, nChains = 3, nIter = 50000, burnIn = 10000)
+result <- run_multiple_chains(Y, ETA, nChains = 3, nIter = 5000, burnIn = 1000)
 
 # Diagnostics
-print(result$gelman_diag)  # Gelman-Rubin diagnostic
-print(result$ess)  # Gelman-Rubin diagnostic
+print(result$gelman_diag)  # Gelman-Rubin diagnostic; function checks whether the chains have converged (values close to 1 indicate convergence).
+print(result$ess)  # effective sample size > 200
 plot(result$chains)        # Trace plots for all chains
 
