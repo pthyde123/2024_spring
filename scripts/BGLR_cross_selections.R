@@ -157,8 +157,20 @@ oatEff %>%
   rownames_to_column() %>% 
   mutate(SI_1 = (PrEff + AsEff)) %>% 
   mutate(SI_2 = (PrEff - AsEff)) %>% 
-  filter(SI_1 > 14 | SI_2 > 14)  # found this number from the previous two, both being 14 is coincidence.
+  filter(SI_1 > 14 | SI_2 > 14) 
 
+
+
+
+oatEff %>% 
+  as_tibble(rownames = NA) %>% 
+  rownames_to_column() %>% 
+  mutate(SI_1 = (PrEff + AsEff)) %>% 
+  mutate(SI_2 = (PrEff - AsEff)) %>% 
+  filter(SI_1 > 14 | SI_2 > 8.31) %>% # found this number from the previous two,
+
+  write.table("clipboard",sep="\t",row.names = F)  # planted these 12-24-24
+  # a little shoot first, we have plenty of seed
 
 
 
