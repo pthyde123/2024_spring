@@ -200,3 +200,46 @@ plot(result$chains)        # Trace plots for all chains
 
 
 
+
+Y <- matrix(rnorm(100), nrow=802, ncol=2) # 10 observations, 2 traits
+ETA <- list(list(K=diag(802), model="RKHS")) # Example ETA, replace as needed
+
+run_multiple_chains <- function(Y, ETA, nChains = 3, nIter = 10000, burnIn = 2000) {
+  chains <- list()
+  ess <- list()
+  mean_ess <- list()
+  gelman <- list()
+   
+  for (i in 1:nChains) {
+    set.seed(i) # Set a unique seed for each chain
+    fit <- BGLR::Multitrait(
+      y = Y,
+      ETA = ETA,
+      nIter = nIter,
+      burnIn = burnIn,
+      verbose = FALSE
+    )
+    # Store posterior samples of a key parameter
+    chains[[i]] <- as.mcmc(fit$ETA[[1]]$b) # Adjust to the desired parameter
+    ess[[i]]  <- effectiveSize(chains[[i]])
+    gelman[[i]]  <- tryCatch(gelman.diag(as.mcmc.list(list(chains[[i]])), autoburnin = FALSE), error = function(e) NULL)
+    
+  }
+  
+  # Combine chains for Gelman-Rubin diagnostic
+  combined_chains <- mcmc.list(chains)
+  gelman_diag <- gelman.diag(combined_chains)
+  mean_ess <- mean(ess, na.rm = TRUE)
+  
+  # Return results
+  return(list(chains = combined_chains, gelman_diag = gelman_diag, mean_ess = mean_ess, ess=ess))
+}
+
+# Run function
+result <- run_multiple_chains(Y, ETA, nChains = 3, nIter = 50000, burnIn = 10000)
+
+# Diagnostics
+print(result$gelman_diag)  # Gelman-Rubin diagnostic
+print(result$ess)  # Gelman-Rubin diagnostic
+plot(result$chains)        # Trace plots for all chains
+
