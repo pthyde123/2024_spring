@@ -132,11 +132,11 @@ ETA <- list(list(X=incLocations, model="FIXED"),
 
 
 
-##################### 01/22/2025 ########
+##################### 01/22/2025 #######################################
 ## JL had some suggestions: Oat Accession and the K matrix were both originally used, but they are both for the independent effect of oat. K has the additional info from the GRM so it makes sense to use just that instead of both
 ## Will also concider general mixing ability vs Producer/Associative effects
 
-## This part stays the same: 
+# This part stays the same: 
 
 #The R project should define the working directory properly for both of us and we can leave it out.  We could also use the "here" package the JL and Mirza are into.
 getwd()
@@ -170,7 +170,7 @@ GRM <- read_tsv("data/SOPF_48_GRM_t3.tsv")
 
 
 
-#### Leah BGLR with Locations, Blocks, OatAcc, PeaAcc, Year, Mngt(inter/mono) ####
+### BGLR set up####
 
 
 grainWgt <- multi_location_data %>%
@@ -184,8 +184,6 @@ grainWgt <- multi_location_data %>%
 # remove rows from the data file only if they have an NA value for both oat and pea yield
 # NAs were messing with the ability to calculate the covariance matrix correctly
 grainWgt <- grainWgt[!(is.na(grainWgt$oatYield) & is.na(grainWgt$peaYield)), ] 
-
-
 
 
 #pth: the na's for the mono pea accession were causing error 
@@ -210,6 +208,8 @@ incPeaAcc <- model.matrix(~ -1 + peaAcc, grainWgt)
 incYear <- model.matrix(~ -1 + studyYear, grainWgt) #year factor
 incMngt <- model.matrix(~ -1 + management, grainWgt) # monoculture/intercrop factor
 
+# Remove 'germplasmName' from the beginning of each column name in incOatAcc
+#colnames(incOatAcc) <- gsub("^germplasmName", "", colnames(incOatAcc))
 
 #### Create GRM and K ####
 
@@ -222,6 +222,9 @@ GRM <- as.matrix(GRM)  # convert GRM to matrix
 
 #  use K = Z %*% GRM %*% t(Z),  Z is incidence matrix
 K = incOatAcc %*% GRM %*% t(incOatAcc)
+
+# *** either here or later down, I need to get the oat names related to this matrix.
+# this will let me add them to the tibble table so the effect values are shown with the oat name
 
 
 # new
@@ -237,26 +240,30 @@ ETA <- list(list(X=incLocations, model="FIXED"),
 
 #### BGLR Model ####
 
-# this will take a few seconds to run, ?how doe we evaluate the best number of nIter and burnIn?
-# will set.seed make this reproducible?
-
 tst2 <- BGLR::Multitrait(yTraits, ETA, intercept=TRUE,
                          resCov=list(df0=4,S0=NULL,type="UN"),
                          R2=0.5,
                          nIter=10000, burnIn=2000,
                          thin=10, saveAt="",verbose=FALSE)
 
-oatEff <- tst2$ETA[[6]]$beta # without OatAcc, look at K
+#### Pull out effect scores####
 
-
+oatEff <- tst2$ETA[[6]]$beta # look at effect of K (accession with GRM)
 
 plot(oatEff, xlab="PrEff", ylab="AsEff",
      cex.lab=1.3, cex.axis=1.3, pch=16)
 
 oatEffSD <- tst2$ETA[[6]]$SD.beta
 
+# map names back to K matrix
+incOatAcc_names <- colnames(incOatAcc) # Extract the column names of incOatAcc
+# K's row and column indices are based on the rows of incOatAcc during the multiplication
+K_names <- incOatAcc_names  # Use these names in the order they correspond to K
+# Save the names in the same order as they occur in K
+names_in_K_order <- K_names
 
-oatName<-colnames(ETA[[6]]$X) %>% 
+# add oat names to identify rows
+oatName<-colnames(ETA[[3]]$X) %>% 
   as_tibble() %>% 
   mutate("oatName" = str_remove(value,"germplasmName")) %>% 
   select(oatName)
@@ -315,6 +322,10 @@ oatEff %>%
 # if tightly correlated, there isnt much varation in diagonal (general mixing ability)
 
 # fit the general mixing ability (total plot yield) form and PR/AS form of model
+
+
+
+
 
 
 
