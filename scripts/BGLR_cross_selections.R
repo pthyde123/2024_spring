@@ -93,6 +93,12 @@ ETA <- list(list(X=incLocations, model="FIXED"),
             list(X=incYear, model="BRR"),
             list(X=incMngt, model="BRR"),
             list(K = K, model="RKHS")) 
+ETA01 <- list(list(X=incLocations, model="FIXED"),
+            list(X=incBlocks, model="BRR"),
+            list(X=incPeaAcc, model="BRR"),
+            list(X=incYear, model="BRR"),
+            list(X=incMngt, model="BRR"),
+            list(K = K01, model="RKHS")) 
 
 
 # the order of these is critical: nothing is labeled in matrices, so we need to know it's position to pull the right info out of results (through it's number rather than a name)
@@ -104,6 +110,11 @@ ETA <- list(list(X=incLocations, model="FIXED"),
 # will set.seed make this reproducible?
 
 tst2 <- BGLR::Multitrait(yTraits, ETA, intercept=TRUE,
+                         resCov=list(df0=4,S0=NULL,type="UN"),
+                         R2=0.5,
+                         nIter=10000, burnIn=2000,
+                         thin=10, saveAt="",verbose=FALSE)
+tst3 <- BGLR::Multitrait(yTraits, ETA01, intercept=TRUE,
                          resCov=list(df0=4,S0=NULL,type="UN"),
                          R2=0.5,
                          nIter=10000, burnIn=2000,

@@ -1,0 +1,274 @@
+---
+title: "Leah_BGLR_GMA"
+output: html_document
+date: "2025-01-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+libraries
+
+```{r libraries}
+# Load Libraries
+library(tidyverse)
+library(readr)
+library(kableExtra)
+library(here)
+require(BGLR)
+library(genomicMateSelectR)  ##https://wolfemd.github.io/genomicMateSelectR/reference/index.html
+library(janitor)
+library(ggplot2)
+library(ggrepel) 
+library(dplyr)
+library(vcfR)  # https://grunwaldlab.github.io/Population_Genetics_in_R/reading_vcf.html
+library(rrBLUP)
+
+# at this point I'm not sure if I'm still using all of these, but it's easier to just load them all than go through and figure out if they're necessary
+```
+
+```{r}
+# Make sure to be in Peter_2024_spring
+getwd()
+```
+
+#### Import and set data ####
+
+Observation data
+
+```{r phenotypes}
+# Importing Phenotype file (Leah complied in other scripts and added a copy to the shared directory)
+multi_location_data <- read.csv("data/2023_2024_multi_location.csv")
+
+#list of accessions in alphabetical order
+accessions_48 <- multi_location_data %>% 
+  select(germplasmName) %>% 
+  arrange(germplasmName) %>% 
+  unique()
+
+accessions_48$germplasmName
+
+# IL17-7339 and IL17-7334 are incredibly similar, combine observation data
+# naming it IL17-733X
+
+multi_location_data2 <- multi_location_data %>%
+  mutate(germplasmName = ifelse(germplasmName == "IL17-7334", "IL17-733X", germplasmName),
+         germplasmName = ifelse(germplasmName == "IL17-7339", "IL17-733X", germplasmName))
+
+#list of accessions in alphabetical order
+accessions_47 <- multi_location_data2 %>% 
+  select(germplasmName) %>% 
+  arrange(germplasmName) %>% 
+  unique()
+
+accessions_47$germplasmName
+```
+
+Genomic Relationship Matrix 
+
+```{r GRM}
+# GRM strait from t3
+GRM <- read_tsv("data/SOPF_48_GRM_t3.tsv")  
+
+# IL17-7334 and IL17-7339 no longer exist as separate accessions
+# need to average the values from the rows and columns of those accessions
+
+# There are two accessions from Juan that don't appear to be on t3 (LEGGETT and NEWBURG)
+# Peter put them in this GRM and set them to 1
+# Instead, change 1 to NA and calculate mean of diagonal
+# Then use the mean of the diagonal as the diagonal values for LEGGET and NUBERG
+
+#format file to take out LEGGETT and NEWBURG
+GRM2 <- as.data.frame(GRM)
+rownames(GRM2) <- GRM2[, 1] # Convert first column to row names
+GRM2 <- GRM2[, -1] # Remove the first column
+
+# Set all values in LEGGET and NEWBERG columns to NA
+GRM2$LEGGETT <- NA
+GRM2$NEWBURG <- NA
+# Set all values in LEGGET and NEWBERG rows to NA
+GRM2["LEGGETT", ] <- NA
+GRM2["NEWBURG", ] <- NA
+
+# combine IL17-7334 and IL17-7339
+GRM2$`IL17-733X` <- rowMeans(GRM2[, c("IL17-7334", "IL17-7339")], na.rm = TRUE) # average of the two accessions columns
+GRM2["IL17-733X", ] <- colMeans(GRM2[c("IL17-7334", "IL17-7339"), ], na.rm = TRUE)# average of the two accessions rows
+
+# remove IL17-7334 and IL17-7339
+GRM2 <- GRM2[!(rownames(GRM2) %in% c("IL17-7334", "IL17-7339")),  # Remove those two accessions from GRM rows
+           !(colnames(GRM2) %in% c("IL17-7334", "IL17-7339"))]  # Remove those two accessions from GRM columns
+
+# order
+GRM2 <- GRM2 %>%
+  select(order(colnames(GRM2))) %>% # put columns(accessions) in alpha order to match incOatAcc
+  arrange(rownames(GRM2)) # put rows(accessions) in alpha order to match incOatAcc
+
+GRM2 <- as.matrix(GRM2)  # convert GRM to matrix
+
+# Get average of the diagonal
+# Extract diagonal values from the data frame and calculate their average
+diagonal_values <- diag(GRM2)  # Extract diagonal values
+average_diagonal <- mean(diagonal_values, na.rm = TRUE)  # average of the diagonal
+
+# Replace the LEGGETT and NEWBURG value(1) with average_diagonal
+# Set all values in LEGGET and NEWBERG columns to 0
+GRM2[,"LEGGETT" ] <- 0
+GRM2[,"NEWBURG" ] <- 0
+# Set all values in LEGGET and NEWBERG rows to 0
+GRM2["LEGGETT", ] <- 0
+GRM2["NEWBURG", ] <- 0
+
+# replace cell values on diagonal
+GRM2["LEGGETT", "LEGGETT"] <- average_diagonal
+GRM2["NEWBURG", "NEWBURG"] <- average_diagonal
+
+# make sure GRM is numeric matrix (reguired to make K matrix)
+#is.numeric(GRM2)
+#GRM2 <- as.matrix(GRM2)
+
+```
+
+
+#### BGLR ####
+
+data for ytraits
+
+```{r obsdata}
+# use data from multi_location_data2 to make a table of observation data
+
+grainWgt <- multi_location_data2 %>%
+  mutate(oatYield = oat_yield) %>%
+  mutate(peaYield = pea_yield) %>%
+  mutate(peaAcc = peaName) %>%
+  mutate(blockNumberF=as.factor(paste(studyYear, location, blockNumber))) %>% #block factor
+  select(blockNumberF, studyYear, location, blockNumber,
+         plotNumber, management, germplasmName, peaAcc, oatYield, peaYield) 
+
+# remove rows from the data file only if they have an NA value for both oat and pea yield
+# NAs were messing with the ability to calculate the covariance matrix correctly
+grainWgt <- grainWgt[!(is.na(grainWgt$oatYield) & is.na(grainWgt$peaYield)), ] 
+
+#pth: the na's for the mono pea accession were causing error 
+#Error in chol.default(S) : the leading minor of order 1 is not positive
+#this fixed the error, but is it correct
+grainWgt <- grainWgt %>% 
+  mutate(peaAcc = if_else(is.na(peaAcc), "none", peaAcc))  
+
+```
+
+Create matrix for response and factors
+
+```{r factors}
+yTraits <- as.matrix(dplyr::select(grainWgt, contains("Yield")))# pulls oat yield and pea yield ; taking factors with yield in them from grain weight table and making them a matrix # could have as many y variables in the matrix as you want, will run each on their own but no limit to what matrix holds
+#factors into matrices
+incLocations <- model.matrix(~ -1 + location, grainWgt) # 0,1 for if plots existed in given location or not; going into grain weight table, pulling out location data, and turns it into 0,1 somehow 
+incBlocks <- model.matrix(~ -1 + blockNumberF, grainWgt)
+incOatAcc <- model.matrix(~ -1 + germplasmName, grainWgt)
+incPeaAcc <- model.matrix(~ -1 + peaAcc, grainWgt)
+incYear <- model.matrix(~ -1 + studyYear, grainWgt) #year factor
+incMngt <- model.matrix(~ -1 + management, grainWgt) # monoculture/intercrop factor
+```
+
+Create K matrix
+
+```{r K}
+#  use K = Z %*% GRM %*% t(Z),  Z is incidence matrix
+K = incOatAcc %*% GRM2 %*% t(incOatAcc)
+```
+
+list of factor matrices
+
+```{r ETA}
+ETA <- list(list(X=incLocations, model="FIXED"),
+            list(X=incBlocks, model="BRR"),
+            list(X=incPeaAcc, model="BRR"),
+            list(X=incYear, model="BRR"),
+            list(X=incMngt, model="BRR"),
+            list(K = K, model="RKHS")) 
+
+# the order of these is critical: nothing is labeled in matrices, so we need to know it's position to pull the right info out of results (through it's number rather than a name)
+
+```
+
+BGLR Model
+
+```{r BGLR}
+# this will take a few seconds to run, ?how doe we evaluate the best number of nIter and burnIn?
+# will set.seed make this reproducible?
+
+tst2 <- BGLR::Multitrait(yTraits, ETA, intercept=TRUE,
+                         resCov=list(df0=4,S0=NULL,type="UN"),
+                         R2=0.5,
+                         nIter=10000, burnIn=2000,
+                         thin=10, saveAt="",verbose=FALSE)
+```
+
+BGLR Results
+
+```{r}
+
+#looks like K is still reduced by one (it's at 46 now when it is expected to be 47)
+# think that the model is doing dimension reduction
+
+oatEff <- tst2$ETA[[6]]$beta # BLUP for accessions
+
+
+plot(oatEff, xlab="PrEff", ylab="AsEff",
+     cex.lab=1.3, cex.axis=1.3, pch=16)
+
+# still need to figure out how to align names
+```
+
+```{r warning=FALSE}
+# Histogram of distribution and summary stats
+
+# Varience
+  # in tst2[["ETA"]][[6]][["Cov"]][["Omega"]]: first number is Pr of oat and second is variation for the As of oat on pea
+tst2[["ETA"]][[6]][["Cov"]][["Omega"]] # variance
+
+# Omega_6.data holds the variances calculated by markov chain
+  # In Omega_6.data:
+    # VarGMAoat = VarPr + VarAs + 2Cov(Pr,As)
+    # first = Pr, second = Cov, third = As
+
+Omega_6 <- read_table("Omega_6.dat", col_names = FALSE) # read in Omage6.dat
+
+#Variance[GeneralMixingAbility Oat]
+Omega_6$VarGMA <- Omega_6$X1 + Omega_6$X3 + 2*Omega_6$X2
+
+hist(Omega_6$VarGMA, breaks = 100)
+  
+```
+
+```{r}
+# confidence interval
+
+#large sample size n=1000, so use normal distribution; assume normality, independence, and not skewed?-I think we have to in order to calculate CI
+
+# Confidence interval using the normal distribution formula is $(\bar X - z_{\alpha/2} \times \frac{\sigma}{\sqrt{n}} , \bar X + z_{\alpha/2} \times \frac{\sigma}{\sqrt{n}})$
+# 95% CI which is the multiplier $100 (1- \alpha)= 95$ this is $\alpha$ = 0.05
+alpha = 0.05
+n=1000
+#assuming sample standard deviation is close to population standard deviation
+sigma <- sd(Omega_6$VarGMA) # standard deviation
+xbar <- mean(Omega_6$VarGMA) # mean
+# find $z_{2/z}$ with the qnorm R function `qnorm(1 - alpha/2)`
+z <- qnorm(1 - alpha/2)
+
+# calculate interval
+ci.lower <- xbar - z * sigma/sqrt(n)
+ci.upper <- xbar + z * sigma/sqrt(n)
+ci.lower
+ci.upper
+
+# Add blue rectangle to histogram for confidence interval
+ci_normal <- xbar + c(-1, 1) * qnorm(0.975) * (sigma / sqrt(n)) # this is the same thing as above, just condensed
+hist_data <- hist(Omega_6$VarGMA, breaks = 100)
+rect(xleft = ci_normal[1], xright = ci_normal[2], 
+     ybottom = 0, ytop = max(hist_data$counts), 
+     col = "blue", border = "blue", density = 20, angle = 45)
+
+# this is a much smaller interval than I expected, and also much further from 0 than I expected 
+```
+

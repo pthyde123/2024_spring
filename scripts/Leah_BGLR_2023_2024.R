@@ -330,7 +330,7 @@ oatEff %>%
 
 # try taking OatAcc out of ETA
 # needs to be variation in Pr and As effects
-# if tightly correlated, there isnt much varation in diagonal (general mixing ability)
+# if tightly correlated, there isnt much variation in diagonal (general mixing ability)
 
 ###################### General Mixing Ability #################################
 # fit the general mixing ability (total plot yield) form and PR/AS form of model
@@ -358,5 +358,26 @@ ggplot(data = grainWgt, aes(x = seq_along(totalYield), y = totalYield, color = s
   theme_minimal()  # Use a clean theme
 
 
+#IL17-7339 and IL17-7334 need to be the same
+# call them the same thing
+# will now have 47 col
 
+# change the GRM: averge those two columns, average those two rows
+# don't need to do the 0.1 diagonal this way
 
+# calculate mean of diagonal of GRM
+# in teh GRM: insert the mean of the diagnoal in the LEGGET and NUBERG (without the 1s)
+
+# beta = BLULP
+# Omaga = variance
+
+# Omage6.data make histogram of distribution and summary stats
+  # first num is Pr of oat and second is variation for the As of oat on pea
+  # VarGMAoat = VarPr + VarAs + 2Cov(Pr,As)
+  # in Omage6.data: first = Pr, second = Cov, third = As
+
+  # 95% CI = credible interval (google how to get this)
+  # if zero is in CI, no confidence was dif than zero
+
+#GMA:
+# is variance 
