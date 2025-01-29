@@ -7,6 +7,7 @@ library(genomicMateSelectR)
 library(janitor)
 library(ggplot2)
 library(ggrepel) 
+library(dplyr)
 
 # read in phenotype data
 ##multi_location_data <- read.csv("/Users/leahtreffer/GitHub/Peter_2024_spring/Peter_2024_spring/data/2023_2024_multi_location.csv")
@@ -156,6 +157,9 @@ library(rrBLUP)
 # Importing Phenotype file (Leah complied in other scripts and added a copy to the shared directory)
 multi_location_data <- read.csv("data/2023_2024_multi_location.csv")  ##pth the previous file path will not work on both of our computers.
 
+multi_location_data <- multi_location_data %>%
+  mutate(total_grain = oat_yield + coalesce(pea_yield, 0)) # new column for total plot grain yield
+
 #list of accessions in alphabetical order, the same as "incOatAcc" # this is not needed anymore
 accessions_48 <- multi_location_data %>% 
   select(germplasmName) %>% 
@@ -167,6 +171,8 @@ accessions_48$germplasmName
 
 # GRM strait from t3, cool, but it looks like not all the accessions from Juan are on t3. we are missing 2 but we can move forward
 GRM <- read_tsv("data/SOPF_48_GRM_t3.tsv")  
+# Genotypes from t3
+vcf <- read.vcfR("data/BreedBaseGenotypesDownload.vcf")  ## this still only 34 genotypes
 
 
 
@@ -176,10 +182,11 @@ GRM <- read_tsv("data/SOPF_48_GRM_t3.tsv")
 grainWgt <- multi_location_data %>%
   mutate(oatYield = oat_yield) %>%
   mutate(peaYield = pea_yield) %>%
+  mutate(totalYield = total_grain) %>%
   mutate(peaAcc = peaName) %>%
   mutate(blockNumberF=as.factor(paste(studyYear, location, blockNumber))) %>% #block factor
   select(blockNumberF, studyYear, location, blockNumber,
-         plotNumber, management, germplasmName, peaAcc, oatYield, peaYield) 
+         plotNumber, management, germplasmName, peaAcc, oatYield, peaYield, totalYield) 
 
 # remove rows from the data file only if they have an NA value for both oat and pea yield
 # NAs were messing with the ability to calculate the covariance matrix correctly
@@ -225,6 +232,10 @@ K = incOatAcc %*% GRM %*% t(incOatAcc)
 
 # *** either here or later down, I need to get the oat names related to this matrix.
 # this will let me add them to the tibble table so the effect values are shown with the oat name
+# columns of incOatAcc should(?) match column order in K
+  # so use order of colnames(incOatAcc) to name columns in K
+names <- colnames(incOatAcc)
+
 
 
 # new
@@ -248,7 +259,7 @@ tst2 <- BGLR::Multitrait(yTraits, ETA, intercept=TRUE,
 
 #### Pull out effect scores####
 
-oatEff <- tst2$ETA[[6]]$beta # look at effect of K (accession with GRM)
+oatEff <- tst2$ETA[[6]]$u # look at effect of K (accession with GRM); since it is RKHS use u (varU)
 
 plot(oatEff, xlab="PrEff", ylab="AsEff",
      cex.lab=1.3, cex.axis=1.3, pch=16)
@@ -321,11 +332,30 @@ oatEff %>%
 # needs to be variation in Pr and As effects
 # if tightly correlated, there isnt much varation in diagonal (general mixing ability)
 
+###################### General Mixing Ability #################################
 # fit the general mixing ability (total plot yield) form and PR/AS form of model
 
+library(ggplot2)
+
+# Create the ggplot
+ggplot(data = grainWgt, aes(x = seq_along(totalYield), y = totalYield, color = location)) +
+  geom_point(size = 3) +  # Adjust point size
+  labs(x = "Index", y = "Total Yield", title = "Grain Weight Total Yield by Location", color = "Location") +
+  theme_minimal()  # Use a clean theme
 
 
 
+# Create the ggplot
+ggplot(data = grainWgt, aes(x = seq_along(totalYield), y = totalYield, color = studyYear, shape = location)) +
+  geom_point(size = 3) +  # Adjust point size
+  labs(
+    x = "Index",
+    y = "Total Yield",
+    title = "Grain Weight Total Yield by Year and Location",
+    color = "Year",
+    shape = "Location"
+  ) +
+  theme_minimal()  # Use a clean theme
 
 
 
