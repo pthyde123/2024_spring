@@ -270,5 +270,6 @@ rect(xleft = ci_normal[1], xright = ci_normal[2],
      col = "blue", border = "blue", density = 20, angle = 45)
 
 # this is a much smaller interval than I expected, and also much further from 0 than I expected 
+# if zero is in CI, no confidence was different than zero
 ```
 
