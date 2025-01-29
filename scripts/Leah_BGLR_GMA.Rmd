@@ -248,7 +248,7 @@ oatGMA <- oatEff[,"PrEff"] + oatEff[,"AsEff"]
 plot(oatGMA, xlab = "Index (accession)")
 ```
 
-####Variance####
+#### Variance ####
 
 ```{r var, warning=FALSE, message=FALSE}
 # Histogram of distribution and summary stats
@@ -267,8 +267,7 @@ Omega_6 <- read_table("Omega_6.dat", col_names = FALSE) # read in Omage6.dat
 #Variance[GeneralMixingAbility Oat]
 Omega_6$VarGMA <- Omega_6$X1 + Omega_6$X3 + 2*Omega_6$X2
 
-hist_data <- hist(Omega_6$VarGMA, breaks = 100)
-plot(hist_data, xlab= "Variance oatGMA")
+hist_data <- hist(Omega_6$VarGMA, breaks = 100, xlab= "Variance oatGMA")
 plot(Omega_6$VarGMA, ylab= "Variance oatGMA")
 ```
 
