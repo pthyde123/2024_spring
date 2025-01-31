@@ -25,6 +25,8 @@ library(dplyr)
 library(vcfR)  # https://grunwaldlab.github.io/Population_Genetics_in_R/reading_vcf.html
 library(rrBLUP)
 library(bayestestR)
+library(lme4)
+library(lmerTest)
 
 # at this point I'm not sure if I'm still using all of these, but it's easier to just load them all than go through and figure out if they're necessary
 ```
@@ -61,6 +63,8 @@ accessions_47 <- multi_location_data2 %>%
   select(germplasmName) %>% 
   arrange(germplasmName) %>% 
   unique()
+
+
 ```
 
 Genomic Relationship Matrix 
@@ -341,4 +345,176 @@ p <- ggplot(Omega_6, aes(x=VarGMA)) +
   geom_vline(xintercept = ci_spi$CI_high, color = "blue", linewidth = 0.5)
 p
 ```
+
+
+
+##########
+
+Leah: a couple other analyses that would be nice:
+Remind me of the year x location combos (environments) this analysis is running over: what are all the trials you have from which you are using data?
+
+2023: NY, IL, SD
+2024: NY, IL, SD
+
+For both oat and pea, what are the means for each environment?  I'm assuming there are some wildly differing mean yields for the two crops and the different environments.  It would be good to document that.
+
+```{r GrainMean}
+
+grainWgt$studyYear <- as.factor(grainWgt$studyYear)
+grainWgt$location <- as.factor(grainWgt$location)
+grainWgt$blockNumber <- as.factor(grainWgt$blockNumber)
+
+grainWgt %>%
+  pivot_longer(oatYield:peaYield,
+               names_to = "grain_type", values_to = "grain_g") %>%
+  mutate(grain_type = str_replace(grain_type, "_yield", "")) %>%
+  mutate(log_grain_g = log(grain_g)) %>%
+  
+  # Create a new column that combines location and year
+  mutate(location_year = paste(location, studyYear, sep = "_")) %>%
+  
+  ggplot(aes(grain_type, grain_g)) +
+  geom_boxplot() +
+  geom_jitter(aes(grain_type, grain_g, color = grain_type), 
+              width = 0.25, size = 4, alpha = 0.75) +
+  
+  xlab("") +
+  ylab("Grain Yield (g/m2)") +
+  scale_color_manual(values = hcl.colors(3, palette = "Fall")) +
+  #scale_color_brewer(palette = "Dark2") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 0.5)) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20, face = "bold")) +
+  theme(axis.text.x = element_text(face = "bold", color = "black", size = 16)) +
+  theme(axis.text.y = element_text(face = "bold", color = "black", size = 16)) +
+  
+  theme(strip.text = element_text(size = 16, face = "plain"),
+        legend.text = element_text(size = 16),
+        legend.title = element_text(size = 18, face = "plain")) +   # Adjust the subtitles and ledgend font size
+  
+  # Facet by both location and year
+  facet_wrap(~location_year, nrow = 3, ncol = 2)
+
+# means for each environment
+year_list <- c("2023", "2024")
+location_list <- c("NY", "IL", "SD")
+
+# remove monoculture plots, just compare means of intercrop plots
+grainWgt2 <- grainWgt %>% 
+  filter(management != "monoculture")
+
+for (i in year_list){
+  for (j in location_list) {
+  means <- grainWgt2 %>%
+  filter(studyYear == i, location == j) %>%
+  summarize(
+    mean_oatYield = mean(oatYield, na.rm = TRUE),
+    mean_peaYield = mean(peaYield, na.rm = TRUE),
+    mean_totalYield = mean(total_grain, na.rm = TRUE)
+  )
+  print(paste("Year:", i, "Location:", j))
+  print(means)
+  }
+}
+```
+
+significant difference in means between year and location (analysis without the monocultures)
+
+```{r}
+# significant difference in means between year and location (still without the monocultures)
+# does oat yield differs significantly by location
+# does oat yield differs significantly by year.
+# is there a location × year interaction, indicating whether location effects vary by year
+
+# Fit a linear mixed model for oat yield
+oat_model <- lmer(oatYield ~ location * studyYear + (1 | location/blockNumber), data = grainWgt2)
+
+# Check model summary
+summary(oat_model)
+
+# Perform ANOVA to test for significance
+anova(oat_model)
+
+```
+
+significant difference between oat and pea yield within a location, and across years
+
+```{r}
+# Is oat and pea yields significantly different at each location
+# Compare oat and pea yields within each location.
+# Test for an interaction effect between location and grain type, which would indicate that the difference between oat and pea yields varies across locations.
+
+# Convert data to long format if not already
+grainWgt_long <- grainWgt2 %>%
+  pivot_longer(oatYield:peaYield,
+               names_to = "grain_type", values_to = "grain_g") %>%
+  mutate(grain_type = str_replace(grain_type, "_yield", ""))
+
+# Had convergence issues trying a mixed model
+# removing random effects, trying a linear model (lm)
+# comparing oat and pea yield at each location:
+grain_model <- lm(grain_g ~ grain_type + location + studyYear + blockNumber, data = grainWgt_long) 
+
+# Check model summary
+summary(grain_model)
+
+# Perform ANOVA
+anova(grain_model)
+
+```
+
+The analysis of the highest density credible interval you did with the data in "Omega_6.dat" is really nice.  There you are looking at the GMA: Omega_6$VarGMA <- Omega_6$X1 + Omega_6$X3 + 2*Omega_6$X2 . Can you do that analysis also for each of the variances and covariances (i.e., for "X1", "X2", and "X3").  For example, is X2, the covariance significantly negative?  That is, does the credible interval overlap with 0?
+
+```{r ciX1}
+ci_spi <- ci(Omega_6$X1, method = "SPI") # default is 95%
+ci_spi
+
+p1 <- ggplot(Omega_6, aes(x=X1)) + 
+  geom_histogram(binwidth=10, color="black", fill="white")+
+  theme_classic()+
+  # SPI in blue
+  geom_vline(xintercept = ci_spi$CI_low, color = "blue", linewidth = 0.5) +
+  geom_vline(xintercept = ci_spi$CI_high, color = "blue", linewidth = 0.5)+ 
+  ggtitle("Credible Interval for VarPr")
+p1
+
+rm(ci_spi)
+```
+
+```{r ciX2}
+ci_spi <- ci(Omega_6$X2, method = "SPI") # default is 95%
+ci_spi
+
+p2 <- ggplot(Omega_6, aes(x=X2)) + 
+  geom_histogram(binwidth=10, color="black", fill="white")+
+  theme_classic()+
+  # SPI in blue
+  geom_vline(xintercept = ci_spi$CI_low, color = "blue", linewidth = 0.5) +
+  geom_vline(xintercept = ci_spi$CI_high, color = "blue", linewidth = 0.5)+ 
+  ggtitle("Credible Interval for Covarience")
+p2
+
+rm(ci_spi)
+```
+
+```{r ciX3}
+ci_spi <- ci(Omega_6$X3, method = "SPI") # default is 95%
+ci_spi
+
+p3 <- ggplot(Omega_6, aes(x=X3)) + 
+  geom_histogram(binwidth=10, color="black", fill="white")+
+  theme_classic()+
+  # SPI in blue
+  geom_vline(xintercept = ci_spi$CI_low, color = "blue", linewidth = 0.5) +
+  geom_vline(xintercept = ci_spi$CI_high, color = "blue", linewidth = 0.5)+ 
+  ggtitle("Credible Interval for VarAs")
+p3
+
+rm(ci_spi)
+```
+
+I'm assuming for both oat and pea, you are analyzing untransformed data.  For the purpose of the grant proposal, I think that's fine.  When we get into wanting to analyze this for publication, we should probably log transform or Box-Cox transform.
+
+see Leah_BGLR_GMA_transformed.Rmd
+
 
