@@ -1,0 +1,80 @@
+---
+title: "Leah_BGLR_GMA_transformed"
+output: html_document
+date: "2025-01-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/leahtreffer/GitHub/Peter_2024_spring/Peter_2024_spring")
+```
+
+libraries
+
+```{r libraries, message=FALSE}
+# Load Libraries
+library(tidyverse)
+library(readr)
+library(kableExtra)
+library(here)
+require(BGLR)
+library(genomicMateSelectR)  ##https://wolfemd.github.io/genomicMateSelectR/reference/index.html
+library(janitor)
+library(ggplot2)
+library(ggrepel) 
+library(dplyr)
+library(vcfR)  # https://grunwaldlab.github.io/Population_Genetics_in_R/reading_vcf.html
+library(rrBLUP)
+library(bayestestR)
+library(MASS)
+
+# at this point I'm not sure if I'm still using all of these, but it's easier to just load them all than go through and figure out if they're necessary
+```
+
+```{r include=FALSE}
+# Make sure to be in Peter_2024_spring
+getwd()
+#setwd("/Users/leahtreffer/GitHub/Peter_2024_spring/Peter_2024_spring")
+```
+
+#### Import and set data ####
+
+Observation data
+
+```{r phenotypes, message=FALSE}
+# Importing Phenotype file (Leah complied in other scripts and added a copy to the shared directory)
+multi_location_data <- read.csv("data/2023_2024_multi_location.csv")
+
+#list of accessions in alphabetical order
+accessions_48 <- multi_location_data %>% 
+  select(germplasmName) %>% 
+  arrange(germplasmName) %>% 
+  unique()
+
+# IL17-7339 and IL17-7334 are incredibly similar, combine observation data
+# naming it IL17-733X
+
+multi_location_data2 <- multi_location_data %>%
+  mutate(germplasmName = ifelse(germplasmName == "IL17-7334", "IL17-733X", germplasmName),
+         germplasmName = ifelse(germplasmName == "IL17-7339", "IL17-733X", germplasmName))
+
+#list of accessions in alphabetical order
+accessions_47 <- multi_location_data2 %>% 
+  select(germplasmName) %>% 
+  arrange(germplasmName) %>% 
+  unique()
+
+# Transformations
+# Box-Cox
+# https://r-coder.com/box-cox-transformation-r/
+
+x <- c(multi_location_data2$oat_yield, na.rm=T)
+boxcox(lm(x ~ 1))
+
+# log transform 
+multi_location_data3 <- multi_location_data2%>%
+  mutate(log_oat_yield = log(oat_yield))%>%
+  mutate(log_pea_yield = log(pea_yield))
+  
+  
+  
+```
