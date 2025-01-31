@@ -47,7 +47,7 @@ multi_location_data <- read.csv("data/2023_2024_multi_location.csv")
 
 #list of accessions in alphabetical order
 accessions_48 <- multi_location_data %>% 
-  select(germplasmName) %>% 
+  dplyr::select(germplasmName) %>% 
   arrange(germplasmName) %>% 
   unique()
 
@@ -60,7 +60,7 @@ multi_location_data2 <- multi_location_data %>%
 
 #list of accessions in alphabetical order
 accessions_47 <- multi_location_data2 %>% 
-  select(germplasmName) %>% 
+  dplyr::select(germplasmName) %>% 
   arrange(germplasmName) %>% 
   unique()
 
@@ -103,7 +103,7 @@ GRM2 <- GRM2[!(rownames(GRM2) %in% c("IL17-7334", "IL17-7339")),  # Remove those
 
 # order
 GRM2 <- GRM2 %>%
-  select(order(colnames(GRM2))) %>% # put columns(accessions) in alpha order to match incOatAcc
+  dplyr::select(order(colnames(GRM2))) %>% # put columns(accessions) in alpha order to match incOatAcc
   arrange(rownames(GRM2)) # put rows(accessions) in alpha order to match incOatAcc
 
 GRM2 <- as.matrix(GRM2)  # convert GRM to matrix
@@ -162,10 +162,11 @@ data for ytraits
 grainWgt <- multi_location_data2 %>%
   mutate(oatYield = oat_yield) %>%
   mutate(peaYield = pea_yield) %>%
+  mutate(total_grain = oat_yield + coalesce(pea_yield, 0))%>%
   mutate(peaAcc = peaName) %>%
   mutate(blockNumberF=as.factor(paste(studyYear, location, blockNumber))) %>% #block factor
-  select(blockNumberF, studyYear, location, blockNumber,
-         plotNumber, management, germplasmName, peaAcc, oatYield, peaYield) 
+  dplyr::select(blockNumberF, studyYear, location, blockNumber,
+         plotNumber, management, germplasmName, peaAcc, oatYield, peaYield, total_grain) 
 
 # remove rows from the data file only if they have an NA value for both oat and pea yield
 # NAs were messing with the ability to calculate the covariance matrix correctly
@@ -176,6 +177,12 @@ grainWgt <- grainWgt[!(is.na(grainWgt$oatYield) & is.na(grainWgt$peaYield)), ]
 #this fixed the error, but is it correct
 grainWgt <- grainWgt %>% 
   mutate(peaAcc = if_else(is.na(peaAcc), "none", peaAcc))  
+
+grainWgt$studyYear <- as.factor(grainWgt$studyYear)
+grainWgt$location <- as.factor(grainWgt$location)
+grainWgt$blockNumber <- as.factor(grainWgt$blockNumber)
+
+
 
 ```
 
@@ -347,22 +354,9 @@ p
 ```
 
 
+#### For both oat and pea, what are the means for each environment ####
 
-##########
-
-Leah: a couple other analyses that would be nice:
-Remind me of the year x location combos (environments) this analysis is running over: what are all the trials you have from which you are using data?
-
-2023: NY, IL, SD
-2024: NY, IL, SD
-
-For both oat and pea, what are the means for each environment?  I'm assuming there are some wildly differing mean yields for the two crops and the different environments.  It would be good to document that.
-
-```{r GrainMean}
-
-grainWgt$studyYear <- as.factor(grainWgt$studyYear)
-grainWgt$location <- as.factor(grainWgt$location)
-grainWgt$blockNumber <- as.factor(grainWgt$blockNumber)
+```{r GrainMean, warning=FALSE}
 
 grainWgt %>%
   pivot_longer(oatYield:peaYield,
@@ -463,7 +457,7 @@ anova(grain_model)
 
 ```
 
-The analysis of the highest density credible interval you did with the data in "Omega_6.dat" is really nice.  There you are looking at the GMA: Omega_6$VarGMA <- Omega_6$X1 + Omega_6$X3 + 2*Omega_6$X2 . Can you do that analysis also for each of the variances and covariances (i.e., for "X1", "X2", and "X3").  For example, is X2, the covariance significantly negative?  That is, does the credible interval overlap with 0?
+Analysis for each of the variances and covariances (i.e., for "X1", "X2", and "X3").  For example, is X2, the covariance significantly negative?  That is, does the credible interval overlap with 0?
 
 ```{r ciX1}
 ci_spi <- ci(Omega_6$X1, method = "SPI") # default is 95%
@@ -513,8 +507,6 @@ p3
 rm(ci_spi)
 ```
 
-I'm assuming for both oat and pea, you are analyzing untransformed data.  For the purpose of the grant proposal, I think that's fine.  When we get into wanting to analyze this for publication, we should probably log transform or Box-Cox transform.
 
-see Leah_BGLR_GMA_transformed.Rmd
 
 
