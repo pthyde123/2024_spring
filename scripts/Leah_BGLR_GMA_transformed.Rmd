@@ -25,7 +25,7 @@ library(dplyr)
 library(vcfR)  # https://grunwaldlab.github.io/Population_Genetics_in_R/reading_vcf.html
 library(rrBLUP)
 library(bayestestR)
-library(MASS)
+#library(MASS)
 
 # at this point I'm not sure if I'm still using all of these, but it's easier to just load them all than go through and figure out if they're necessary
 ```
@@ -67,14 +67,179 @@ accessions_47 <- multi_location_data2 %>%
 # Box-Cox
 # https://r-coder.com/box-cox-transformation-r/
 
-x <- c(multi_location_data2$oat_yield, na.rm=T)
-boxcox(lm(x ~ 1))
+#x <- c(multi_location_data2$oat_yield, na.rm=T)
+#boxcox(lm(x ~ 1))
 
 # log transform 
 multi_location_data3 <- multi_location_data2%>%
   mutate(log_oat_yield = log(oat_yield))%>%
   mutate(log_pea_yield = log(pea_yield))
   
-  
-  
+```
+
+Genomic Relationship Matrix 
+
+```{r GRM, message=FALSE}
+# GRM strait from t3
+GRM <- read_tsv("data/SOPF_48_GRM_t3.tsv")  
+
+# IL17-7334 and IL17-7339 no longer exist as separate accessions
+# need to average the values from the rows and columns of those accessions
+
+# There are two accessions from Juan that don't appear to be on t3 (LEGGETT and NEWBURG)
+# Peter put them in this GRM and set them to 1
+# Instead, change 1 to NA and calculate mean of diagonal
+# Then use the mean of the diagonal as the diagonal values for LEGGET and NUBERG
+
+#format file to take out LEGGETT and NEWBURG
+GRM2 <- as.data.frame(GRM)
+rownames(GRM2) <- GRM2[, 1] # Convert first column to row names
+GRM2 <- GRM2[, -1] # Remove the first column
+
+# Set all values in LEGGET and NEWBERG columns to NA
+GRM2$LEGGETT <- NA
+GRM2$NEWBURG <- NA
+# Set all values in LEGGET and NEWBERG rows to NA
+GRM2["LEGGETT", ] <- NA
+GRM2["NEWBURG", ] <- NA
+
+# combine IL17-7334 and IL17-7339
+GRM2$`IL17-733X` <- rowMeans(GRM2[, c("IL17-7334", "IL17-7339")], na.rm = TRUE) # average of the two accessions columns
+GRM2["IL17-733X", ] <- colMeans(GRM2[c("IL17-7334", "IL17-7339"), ], na.rm = TRUE)# average of the two accessions rows
+
+# remove IL17-7334 and IL17-7339
+GRM2 <- GRM2[!(rownames(GRM2) %in% c("IL17-7334", "IL17-7339")),  # Remove those two accessions from GRM rows
+           !(colnames(GRM2) %in% c("IL17-7334", "IL17-7339"))]  # Remove those two accessions from GRM columns
+
+# order
+GRM2 <- GRM2 %>%
+  dplyr::select(order(colnames(GRM2))) %>% # put columns(accessions) in alpha order to match incOatAcc
+  arrange(rownames(GRM2)) # put rows(accessions) in alpha order to match incOatAcc
+
+GRM2 <- as.matrix(GRM2)  # convert GRM to matrix
+
+# Get average of the diagonal
+# Extract diagonal values from the data frame and calculate their average
+diagonal_values <- diag(GRM2)  # Extract diagonal values
+average_diagonal <- mean(diagonal_values, na.rm = TRUE)  # average of the diagonal
+
+# Replace the LEGGETT and NEWBURG value(1) with average_diagonal
+# Set all values in LEGGET and NEWBERG columns to 0
+GRM2[,"LEGGETT" ] <- 0
+GRM2[,"NEWBURG" ] <- 0
+# Set all values in LEGGET and NEWBERG rows to 0
+GRM2["LEGGETT", ] <- 0
+GRM2["NEWBURG", ] <- 0
+
+# replace cell values on diagonal
+GRM2["LEGGETT", "LEGGETT"] <- average_diagonal
+GRM2["NEWBURG", "NEWBURG"] <- average_diagonal
+
+# make sure GRM is numeric matrix (reguired to make K matrix)
+#is.numeric(GRM2)
+#GRM2 <- as.matrix(GRM2)
+
+# still having troubles with the BGLR results reducing the number of oats
+# could be that it is not full rank: at least one row or column that can be calculated as a linear combination of another row or column 
+# on the assumption that there aren't still two rows or columns that are the same, could be that one is the average of two other ones
+
+# double check that things are the right dimensions at each step
+# verify the hypothesis that it isn't full rank
+  #eigen() should be symmetric 
+  #eigen values : look for zero or negative, these are bad
+eigen(GRM2, only.values = TRUE)
+  # this shows that the last eigen is much smaller than the others but is not negative or zero
+tst <- cor(GRM2) # correlation 
+diag(tst) <- 0 # want to find highly correlated accessions, but don't want the 1 self correlation diagonal, so setting to 0
+mn <- which(abs(tst) == max(abs(tst)), arr.ind=T) # find highest correlation
+#SABER and IL17-5238 have 0.9596241238 correlation, so very similar but probably not the same  
+
+# trying the add the 0.1 thing
+GRM3 <- GRM2
+diag(GRM3) <- diag(GRM3) + 0.0001
+# better to avoid doing this, but a really small number could be ok, could be as small as twice the smallest eigen value
+
+```
+
+
+#### BGLR ####
+
+data for ytraits
+
+```{r obsdata, message=FALSE}
+# use data from multi_location_data2 to make a table of observation data
+
+grainWgt <- multi_location_data3 %>%
+  mutate(logOatYield = log_oat_yield) %>%
+  mutate(logPeaYield = log_pea_yield) %>%
+  mutate(total_grain = oat_yield + coalesce(pea_yield, 0))%>%
+  mutate(peaAcc = peaName) %>%
+  mutate(blockNumberF=as.factor(paste(studyYear, location, blockNumber))) %>% #block factor
+  dplyr::select(blockNumberF, studyYear, location, blockNumber,
+         plotNumber, management, germplasmName, peaAcc, logOatYield, logPeaYield, total_grain) 
+
+# remove rows from the data file only if they have an NA value for both oat and pea yield
+# NAs were messing with the ability to calculate the covariance matrix correctly
+grainWgt <- grainWgt[!(is.na(grainWgt$logOatYield) & is.na(grainWgt$logPeaYield)), ] 
+
+#pth: the na's for the mono pea accession were causing error 
+#Error in chol.default(S) : the leading minor of order 1 is not positive
+#this fixed the error, but is it correct
+grainWgt <- grainWgt %>% 
+  mutate(peaAcc = if_else(is.na(peaAcc), "none", peaAcc))  
+
+grainWgt$studyYear <- as.factor(grainWgt$studyYear)
+grainWgt$location <- as.factor(grainWgt$location)
+grainWgt$blockNumber <- as.factor(grainWgt$blockNumber)
+
+```
+
+Create matrix for response and factors
+
+```{r factors, message=FALSE}
+yTraits <- as.matrix(dplyr::select(grainWgt, contains("Yield")))# pulls oat yield and pea yield ; taking factors with yield in them from grain weight table and making them a matrix # could have as many y variables in the matrix as you want, will run each on their own but no limit to what matrix holds
+#factors into matrices
+incLocations <- model.matrix(~ -1 + location, grainWgt) # 0,1 for if plots existed in given location or not; going into grain weight table, pulling out location data, and turns it into 0,1 somehow 
+incBlocks <- model.matrix(~ -1 + blockNumberF, grainWgt)
+incOatAcc <- model.matrix(~ -1 + germplasmName, grainWgt)
+incPeaAcc <- model.matrix(~ -1 + peaAcc, grainWgt)
+incYear <- model.matrix(~ -1 + studyYear, grainWgt) #year factor
+incMngt <- model.matrix(~ -1 + management, grainWgt) # monoculture/intercrop factor
+```
+
+Create K matrix
+
+```{r K, message=FALSE}
+#  use K = Z %*% GRM %*% t(Z),  Z is incidence matrix
+K = incOatAcc %*% GRM2 %*% t(incOatAcc)
+
+# try with the matrix with 0.001 added to the diagonal 
+K2 = incOatAcc %*% GRM3 %*% t(incOatAcc)
+```
+
+list of factor matrices
+
+```{r ETA, message=FALSE}
+ETA <- list(list(X=incLocations, model="FIXED"),
+            list(X=incBlocks, model="BRR"),
+            list(X=incPeaAcc, model="BRR"),
+            list(X=incYear, model="BRR"),
+            list(X=incMngt, model="BRR"),
+            list(K = K2, model="RKHS")) 
+
+# the order of these is critical: nothing is labeled in matrices, so we need to know it's position to pull the right info out of results (through it's number rather than a name)
+
+```
+
+BGLR Model
+
+```{r BGLR}
+# this will take a few seconds to run, ?how doe we evaluate the best number of nIter and burnIn?
+# will set.seed make this reproducible?
+
+bglr_model <- BGLR::Multitrait(yTraits, ETA, intercept=TRUE,
+                         resCov=list(df0=4,S0=NULL,type="UN"),
+                         R2=0.5,
+                         nIter=10000, burnIn=2000,
+                         thin=10, saveAt="",verbose=FALSE)
 ```

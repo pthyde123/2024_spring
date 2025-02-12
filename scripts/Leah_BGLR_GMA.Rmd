@@ -252,6 +252,21 @@ plot(oatEff, xlab="PrEff", ylab="AsEff",
 colnames(oatEff) <- c("PrEff", "AsEff")
 rownames(oatEff) <- c(accessions_47$germplasmName)
 
+# Crossing Selections
+SI_1 <- oatEff %>% 
+  as_tibble(rownames = NA) %>% 
+  rownames_to_column() %>% 
+  mutate(SI_1 = (PrEff + AsEff)) %>% 
+  mutate(SI_2 = (PrEff - AsEff)) %>%
+  arrange(desc(SI_1))
+
+SI_2 <- oatEff %>% 
+  as_tibble(rownames = NA) %>% 
+  rownames_to_column() %>% 
+  mutate(SI_1 = (PrEff + AsEff)) %>% 
+  mutate(SI_2 = (PrEff - AsEff)) %>%
+  arrange(desc(SI_2))
+
 # General Mixing Ability
 # GMA_oat = Pr_oat + As_oat-on-pea
 # overall effect of oat on the intercrop
@@ -428,6 +443,26 @@ summary(oat_model)
 
 # Perform ANOVA to test for significance
 anova(oat_model)
+
+```
+
+```{r}
+# significant difference in means between year and location (still without the monocultures)
+# does the total yield differ significantly by location
+# does the total yield differ significantly by year.
+# is there a location × year interaction, indicating whether location effects vary by year
+
+grainWgt2 <- grainWgt2 %>%
+  mutate(across(c(oatYield, peaYield), scale))
+
+# Fit a linear mixed model for oat yield
+total_model <- lmer(total_grain ~ oatYield + peaYield + (1 | location/studyYear), data = grainWgt2)
+
+# Check model summary
+summary(total_model)
+
+# Perform ANOVA to test for significance
+anova(total_model)
 
 ```
 
