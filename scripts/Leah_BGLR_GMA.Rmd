@@ -1,0 +1,550 @@
+---
+title: "Spring Oat-Pea BGLR and GMA"
+output: html_document
+date: "2025-01-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/leahtreffer/GitHub/Peter_2024_spring/Peter_2024_spring")
+```
+
+libraries
+
+```{r libraries, message=FALSE}
+# Load Libraries
+library(tidyverse)
+library(readr)
+library(kableExtra)
+library(here)
+require(BGLR)
+library(genomicMateSelectR)  ##https://wolfemd.github.io/genomicMateSelectR/reference/index.html
+library(janitor)
+library(ggplot2)
+library(ggrepel) 
+library(dplyr)
+library(vcfR)  # https://grunwaldlab.github.io/Population_Genetics_in_R/reading_vcf.html
+library(rrBLUP)
+library(bayestestR)
+library(lme4)
+library(lmerTest)
+
+# at this point I'm not sure if I'm still using all of these, but it's easier to just load them all than go through and figure out if they're necessary
+```
+
+```{r include=FALSE}
+# Make sure to be in Peter_2024_spring
+getwd()
+#setwd("/Users/leahtreffer/GitHub/Peter_2024_spring/Peter_2024_spring")
+
+setwd("~/Intercrop JLJ/2024_spring/2024_spring")
+```
+
+#### Import and set data ####
+
+Observation data
+
+```{r phenotypes, message=FALSE}
+# Importing Phenotype file (Leah complied in other scripts and added a copy to the shared directory)
+
+multi_location_data <- read.csv("data/2023_2024_multi_location.csv")
+
+#list of accessions in alphabetical order
+accessions_48 <- multi_location_data %>% 
+  dplyr::select(germplasmName) %>% 
+  arrange(germplasmName) %>% 
+  unique()
+
+# IL17-7339 and IL17-7334 are incredibly similar, combine observation data
+# naming it IL17-733X
+
+multi_location_data2 <- multi_location_data %>%
+  mutate(germplasmName = ifelse(germplasmName == "IL17-7334", "IL17-733X", germplasmName),
+         germplasmName = ifelse(germplasmName == "IL17-7339", "IL17-733X", germplasmName))
+
+#list of accessions in alphabetical order
+accessions_47 <- multi_location_data2 %>% 
+  dplyr::select(germplasmName) %>% 
+  arrange(germplasmName) %>% 
+  unique()
+
+
+```
+
+Genomic Relationship Matrix 
+
+```{r GRM, message=FALSE}
+# GRM strait from t3
+GRM <- read_tsv("data/SOPF_48_GRM_t3.tsv")  
+
+# IL17-7334 and IL17-7339 no longer exist as separate accessions
+# need to average the values from the rows and columns of those accessions
+
+# There are two accessions from Juan that don't appear to be on t3 (LEGGETT and NEWBURG)
+# Peter put them in this GRM and set them to 1
+# Instead, change 1 to NA and calculate mean of diagonal
+# Then use the mean of the diagonal as the diagonal values for LEGGET and NUBERG
+
+#format file to take out LEGGETT and NEWBURG
+GRM2 <- as.data.frame(GRM)
+rownames(GRM2) <- GRM2[, 1] # Convert first column to row names
+GRM2 <- GRM2[, -1] # Remove the first column
+
+# Set all values in LEGGET and NEWBERG columns to NA
+GRM2$LEGGETT <- NA
+GRM2$NEWBURG <- NA
+# Set all values in LEGGET and NEWBERG rows to NA
+GRM2["LEGGETT", ] <- NA
+GRM2["NEWBURG", ] <- NA
+
+# combine IL17-7334 and IL17-7339
+GRM2$`IL17-733X` <- rowMeans(GRM2[, c("IL17-7334", "IL17-7339")], na.rm = TRUE) # average of the two accessions columns
+GRM2["IL17-733X", ] <- colMeans(GRM2[c("IL17-7334", "IL17-7339"), ], na.rm = TRUE)# average of the two accessions rows
+
+# remove IL17-7334 and IL17-7339
+GRM2 <- GRM2[!(rownames(GRM2) %in% c("IL17-7334", "IL17-7339")),  # Remove those two accessions from GRM rows
+           !(colnames(GRM2) %in% c("IL17-7334", "IL17-7339"))]  # Remove those two accessions from GRM columns
+
+# order
+GRM2 <- GRM2 %>%
+  dplyr::select(order(colnames(GRM2))) %>% # put columns(accessions) in alpha order to match incOatAcc
+  arrange(rownames(GRM2)) # put rows(accessions) in alpha order to match incOatAcc
+
+GRM2 <- as.matrix(GRM2)  # convert GRM to matrix
+
+# Get average of the diagonal
+# Extract diagonal values from the data frame and calculate their average
+diagonal_values <- diag(GRM2)  # Extract diagonal values
+average_diagonal <- mean(diagonal_values, na.rm = TRUE)  # average of the diagonal
+
+# Replace the LEGGETT and NEWBURG value(1) with average_diagonal
+# Set all values in LEGGET and NEWBERG columns to 0
+GRM2[,"LEGGETT" ] <- 0
+GRM2[,"NEWBURG" ] <- 0
+# Set all values in LEGGET and NEWBERG rows to 0
+GRM2["LEGGETT", ] <- 0
+GRM2["NEWBURG", ] <- 0
+
+# replace cell values on diagonal
+GRM2["LEGGETT", "LEGGETT"] <- average_diagonal
+GRM2["NEWBURG", "NEWBURG"] <- average_diagonal
+
+# make sure GRM is numeric matrix (reguired to make K matrix)
+#is.numeric(GRM2)
+#GRM2 <- as.matrix(GRM2)
+
+# still having troubles with the BGLR results reducing the number of oats
+# could be that it is not full rank: at least one row or column that can be calculated as a linear combination of another row or column 
+# on the assumption that there aren't still two rows or columns that are the same, could be that one is the average of two other ones
+
+# double check that things are the right dimensions at each step
+# verify the hypothesis that it isn't full rank
+  #eigen() should be symmetric 
+  #eigen values : look for zero or negative, these are bad
+eigen(GRM2, only.values = TRUE)
+  # this shows that the last eigen is much smaller than the others but is not negative or zero
+tst <- cor(GRM2) # correlation 
+diag(tst) <- 0 # want to find highly correlated accessions, but don't want the 1 self correlation diagonal, so setting to 0
+mn <- which(abs(tst) == max(abs(tst)), arr.ind=T) # find highest correlation
+#SABER and IL17-5238 have 0.9596241238 correlation, so very similar but probably not the same  
+
+# trying the add the 0.1 thing
+GRM3 <- GRM2
+diag(GRM3) <- diag(GRM3) + 0.0001
+# better to avoid doing this, but a really small number could be ok, could be as small as twice the smallest eigen value
+
+```
+
+
+#### BGLR ####
+
+data for ytraits
+
+```{r obsdata, message=FALSE}
+# use data from multi_location_data2 to make a table of observation data
+
+grainWgt <- multi_location_data2 %>%
+  mutate(oatYield = oat_yield) %>%
+  mutate(peaYield = pea_yield) %>%
+  mutate(total_grain = oat_yield + coalesce(pea_yield, 0))%>%
+  mutate(peaAcc = peaName) %>%
+  mutate(blockNumberF=as.factor(paste(studyYear, location, blockNumber))) %>% #block factor
+  dplyr::select(blockNumberF, studyYear, location, blockNumber,
+         plotNumber, management, germplasmName, peaAcc, oatYield, peaYield, total_grain) 
+
+# remove rows from the data file only if they have an NA value for both oat and pea yield
+# NAs were messing with the ability to calculate the covariance matrix correctly
+grainWgt <- grainWgt[!(is.na(grainWgt$oatYield) & is.na(grainWgt$peaYield)), ] 
+
+#pth: the na's for the mono pea accession were causing error 
+#Error in chol.default(S) : the leading minor of order 1 is not positive
+#this fixed the error, but is it correct
+grainWgt <- grainWgt %>% 
+  mutate(peaAcc = if_else(is.na(peaAcc), "none", peaAcc))  
+
+grainWgt$studyYear <- as.factor(grainWgt$studyYear)
+grainWgt$location <- as.factor(grainWgt$location)
+grainWgt$blockNumber <- as.factor(grainWgt$blockNumber)
+
+
+
+```
+
+Create matrix for response and factors
+
+```{r factors, message=FALSE}
+yTraits <- as.matrix(dplyr::select(grainWgt, contains("Yield")))# pulls oat yield and pea yield ; taking factors with yield in them from grain weight table and making them a matrix # could have as many y variables in the matrix as you want, will run each on their own but no limit to what matrix holds
+#factors into matrices
+incLocations <- model.matrix(~ -1 + location, grainWgt) # 0,1 for if plots existed in given location or not; going into grain weight table, pulling out location data, and turns it into 0,1 somehow 
+incBlocks <- model.matrix(~ -1 + blockNumberF, grainWgt)
+incOatAcc <- model.matrix(~ -1 + germplasmName, grainWgt)
+incPeaAcc <- model.matrix(~ -1 + peaAcc, grainWgt)
+incYear <- model.matrix(~ -1 + studyYear, grainWgt) #year factor
+incMngt <- model.matrix(~ -1 + management, grainWgt) # monoculture/intercrop factor
+```
+
+Create K matrix
+
+```{r K, message=FALSE}
+#  use K = Z %*% GRM %*% t(Z),  Z is incidence matrix
+K = incOatAcc %*% GRM2 %*% t(incOatAcc)
+
+# try with the matrix with 0.001 added to the diagonal 
+K2 = incOatAcc %*% GRM3 %*% t(incOatAcc)
+```
+
+list of factor matrices
+
+```{r ETA, message=FALSE}
+ETA <- list(list(X=incLocations, model="FIXED"),
+            list(X=incBlocks, model="BRR"),
+            list(X=incPeaAcc, model="BRR"),
+            list(X=incYear, model="BRR"),
+            list(X=incMngt, model="BRR"),
+            list(K = K2, model="RKHS")) 
+
+# the order of these is critical: nothing is labeled in matrices, so we need to know it's position to pull the right info out of results (through it's number rather than a name)
+
+```
+
+BGLR Model
+
+```{r BGLR}
+# this will take a few seconds to run, ?how doe we evaluate the best number of nIter and burnIn?
+# will set.seed make this reproducible?
+
+bglr_model <- BGLR::Multitrait(yTraits, ETA, intercept=TRUE,
+                         resCov=list(df0=4,S0=NULL,type="UN"),
+                         R2=0.5,
+                         nIter=10000, burnIn=2000,
+                         thin=10, saveAt="",verbose=FALSE)
+```
+
+BGLR Results
+
+```{r Eff, message=FALSE}
+
+oatEff <- bglr_model$ETA[[6]]$beta # BLUP for accessions
+oatEff
+#looks like K is still reduced by one (it's at 46 now when it is expected to be 47)
+#Works when using the K2 matrix with the GRM with a +0.0001 diagonal 
+
+plot(oatEff, xlab="PrEff", ylab="AsEff",
+     cex.lab=1.3, cex.axis=1.3, pch=16)
+
+# add oat names to effect results
+colnames(oatEff) <- c("PrEff", "AsEff")
+rownames(oatEff) <- c(accessions_47$germplasmName)
+
+# Crossing Selections
+SI_1 <- oatEff %>% 
+  as_tibble(rownames = NA) %>% 
+  rownames_to_column() %>% 
+  mutate(SI_1 = (PrEff + AsEff)) %>% 
+  mutate(SI_2 = (PrEff - AsEff)) %>%
+  arrange(desc(SI_1))
+
+SI_2 <- oatEff %>% 
+  as_tibble(rownames = NA) %>% 
+  rownames_to_column() %>% 
+  mutate(SI_1 = (PrEff + AsEff)) %>% 
+  mutate(SI_2 = (PrEff - AsEff)) %>%
+  arrange(desc(SI_2))
+
+# General Mixing Ability
+# GMA_oat = Pr_oat + As_oat-on-pea
+# overall effect of oat on the intercrop
+oatGMA <- oatEff[,"PrEff"] + oatEff[,"AsEff"]
+plot(oatGMA, xlab = "Index (accession)")
+```
+
+#### Variance ####
+
+```{r var, warning=FALSE, message=FALSE}
+# Histogram of distribution and summary stats
+
+# Varience
+  # in bglr_model[["ETA"]][[6]][["Cov"]][["Omega"]]: first number is Pr of oat and second is variation for the As of oat on pea
+bglr_model[["ETA"]][[6]][["Cov"]][["Omega"]] # variance
+
+# Omega_6.data holds the variances calculated by markov chain
+  # In Omega_6.data:
+    # VarGMAoat = VarPr + VarAs + 2Cov(Pr,As)
+    # first = Pr, second = Cov, third = As
+
+Omega_6 <- read_table("Omega_6.dat", col_names = FALSE) # read in Omage6.dat
+
+#Variance[GeneralMixingAbility Oat]
+Omega_6$VarGMA <- Omega_6$X1 + Omega_6$X3 + 2*Omega_6$X2
+
+hist_data <- hist(Omega_6$VarGMA, breaks = 100, xlab= "Variance oatGMA")
+plot(Omega_6$VarGMA, ylab= "Variance oatGMA")
+```
+
+95% confidence interval
+
+```{r 95CI, message=FALSE}
+
+#large sample size n=1000, so use normal distribution; assume normality, independence, and not skewed?-I think we have to in order to calculate CI
+
+# Confidence interval using the normal distribution formula is $(\bar X - z_{\alpha/2} \times \frac{\sigma}{\sqrt{n}} , \bar X + z_{\alpha/2} \times \frac{\sigma}{\sqrt{n}})$
+# 95% CI which is the multiplier $100 (1- \alpha)= 95$ this is $\alpha$ = 0.05
+alpha = 0.05
+n=1000
+#assuming sample standard deviation is close to population standard deviation
+sigma <- sd(Omega_6$VarGMA) # standard deviation
+xbar <- mean(Omega_6$VarGMA) # mean
+# find $z_{2/z}$ with the qnorm R function `qnorm(1 - alpha/2)`
+z <- qnorm(1 - alpha/2)
+
+# calculate interval
+ci.lower <- xbar - z * sigma/sqrt(n)
+ci.upper <- xbar + z * sigma/sqrt(n)
+ci.lower
+ci.upper
+
+# Add blue rectangle to histogram for confidence interval
+ci_normal <- xbar + c(-1, 1) * qnorm(0.975) * (sigma / sqrt(n)) # this is the same thing as above, just condensed
+hist_data <- hist(Omega_6$VarGMA, breaks = 100)
+rect(xleft = ci_normal[1], xright = ci_normal[2], 
+     ybottom = 0, ytop = max(hist_data$counts), 
+     col = "blue", border = "blue", density = 20, angle = 45)
+
+# this is a much smaller interval than I expected 
+# if zero is in CI, no confidence was different than zero
+
+# this method assumes independence, which we do not have 
+```
+
+credible interval
+
+```{r CI, message=FALSE}
+#https://easystats.github.io/bayestestR/articles/credible_interval.html
+# describe and summarise the uncertainty related to the unknown parameters you are trying to estimate
+#credible interval is the range containing a particular percentage of probable values.
+# 95% credible interval is the central portion of the posterior distribution that contains 95% of the values.
+
+#compute credible interval using Highest Density Interval (HDI) (hdi())
+# I chose to use HDI instead of the Equal-tailed Interval (ETI) (eti()) because we expect a skewed distribution and using an equal tail will place the interval so it has symmetric distribution which could lead to a interval that includes tail values that aren't 'credible' parameter values.  
+# want the smallest CI height (SPI) (Wikipedia says SPI is the same as HDI, but the ci package has separate options for them) # * learn how the function works 
+
+ci_hdi <- ci(Omega_6$VarGMA, method = "HDI") # default is 95%
+ci_spi <- ci(Omega_6$VarGMA, method = "SPI") # default is 95%
+ci_hdi
+ci_spi
+# they're very close in values
+
+# Plot the distribution and add the limits of the two CIs
+#out <- estimate_density(Omega_6$VarGMA, extend = TRUE)
+#ggplot(out, aes(x = x, y = y)) +
+#  geom_area(fill = "grey") +
+#  theme_classic() +
+#  # HDI in blue
+#  geom_vline(xintercept = ci_hdi$CI_low, color = "blue", linewidth = 1.5) +
+#  geom_vline(xintercept = ci_hdi$CI_high, color = "blue", linewidth = 1.5)
+
+p <- ggplot(Omega_6, aes(x=VarGMA)) + 
+  geom_histogram(binwidth=10, color="black", fill="white")+
+  theme_classic()+
+  # SPI in blue
+  geom_vline(xintercept = ci_spi$CI_low, color = "blue", linewidth = 0.5) +
+  geom_vline(xintercept = ci_spi$CI_high, color = "blue", linewidth = 0.5)
+p
+```
+
+
+#### For both oat and pea, what are the means for each environment ####
+
+```{r GrainMean, warning=FALSE}
+
+grainWgt %>%
+  pivot_longer(oatYield:peaYield,
+               names_to = "grain_type", values_to = "grain_g") %>%
+  mutate(grain_type = str_replace(grain_type, "_yield", "")) %>%
+  mutate(log_grain_g = log(grain_g)) %>%
+  
+  # Create a new column that combines location and year
+  mutate(location_year = paste(location, studyYear, sep = "_")) %>%
+  
+  ggplot(aes(grain_type, grain_g)) +
+  geom_boxplot() +
+  geom_jitter(aes(grain_type, grain_g, color = grain_type), 
+              width = 0.25, size = 4, alpha = 0.75) +
+  
+  xlab("") +
+  ylab("Grain Yield (g/m2)") +
+  scale_color_manual(values = hcl.colors(3, palette = "Fall")) +
+  #scale_color_brewer(palette = "Dark2") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 0.5)) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20, face = "bold")) +
+  theme(axis.text.x = element_text(face = "bold", color = "black", size = 16)) +
+  theme(axis.text.y = element_text(face = "bold", color = "black", size = 16)) +
+  
+  theme(strip.text = element_text(size = 16, face = "plain"),
+        legend.text = element_text(size = 16),
+        legend.title = element_text(size = 18, face = "plain")) +   # Adjust the subtitles and ledgend font size
+  
+  # Facet by both location and year
+  facet_wrap(~location_year, nrow = 3, ncol = 2)
+
+# means for each environment
+year_list <- c("2023", "2024")
+location_list <- c("NY", "IL", "SD")
+
+# remove monoculture plots, just compare means of intercrop plots
+grainWgt2 <- grainWgt %>% 
+  filter(management != "monoculture")
+
+for (i in year_list){
+  for (j in location_list) {
+  means <- grainWgt2 %>%
+  filter(studyYear == i, location == j) %>%
+  summarize(
+    mean_oatYield = mean(oatYield, na.rm = TRUE),
+    mean_peaYield = mean(peaYield, na.rm = TRUE),
+    mean_totalYield = mean(total_grain, na.rm = TRUE)
+  )
+  print(paste("Year:", i, "Location:", j))
+  print(means)
+  }
+}
+```
+
+significant difference in means between year and location (analysis without the monocultures)
+
+```{r}
+# significant difference in means between year and location (still without the monocultures)
+# does oat yield differs significantly by location
+# does oat yield differs significantly by year.
+# is there a location × year interaction, indicating whether location effects vary by year
+
+# Fit a linear mixed model for oat yield
+oat_model <- lmer(oatYield ~ location * studyYear + (1 | location/blockNumber), data = grainWgt2)
+
+# Check model summary
+summary(oat_model)
+
+# Perform ANOVA to test for significance
+anova(oat_model)
+
+```
+
+```{r}
+# significant difference in means between year and location (still without the monocultures)
+# does the total yield differ significantly by location
+# does the total yield differ significantly by year.
+# is there a location × year interaction, indicating whether location effects vary by year
+
+grainWgt2 <- grainWgt2 %>%
+  mutate(across(c(oatYield, peaYield), scale))
+
+# Fit a linear mixed model for oat yield
+total_model <- lmer(total_grain ~ oatYield + peaYield + (1 | location/studyYear), data = grainWgt2)
+
+# Check model summary
+summary(total_model)
+
+# Perform ANOVA to test for significance
+anova(total_model)
+
+```
+
+significant difference between oat and pea yield within a location, and across years
+
+```{r}
+# Is oat and pea yields significantly different at each location
+# Compare oat and pea yields within each location.
+# Test for an interaction effect between location and grain type, which would indicate that the difference between oat and pea yields varies across locations.
+
+# Convert data to long format if not already
+grainWgt_long <- grainWgt2 %>%
+  pivot_longer(oatYield:peaYield,
+               names_to = "grain_type", values_to = "grain_g") %>%
+  mutate(grain_type = str_replace(grain_type, "_yield", ""))
+
+# Had convergence issues trying a mixed model
+# removing random effects, trying a linear model (lm)
+# comparing oat and pea yield at each location:
+grain_model <- lm(grain_g ~ grain_type + location + studyYear + blockNumber, data = grainWgt_long) 
+
+# Check model summary
+summary(grain_model)
+
+# Perform ANOVA
+anova(grain_model)
+
+```
+
+Analysis for each of the variances and covariances (i.e., for "X1", "X2", and "X3").  For example, is X2, the covariance significantly negative?  That is, does the credible interval overlap with 0?
+
+```{r ciX1}
+ci_spi <- ci(Omega_6$X1, method = "SPI") # default is 95%
+ci_spi
+
+p1 <- ggplot(Omega_6, aes(x=X1)) + 
+  geom_histogram(binwidth=10, color="black", fill="white")+
+  theme_classic()+
+  # SPI in blue
+  geom_vline(xintercept = ci_spi$CI_low, color = "blue", linewidth = 0.5) +
+  geom_vline(xintercept = ci_spi$CI_high, color = "blue", linewidth = 0.5)+ 
+  ggtitle("Credible Interval for VarPr")
+p1
+
+rm(ci_spi)
+```
+
+```{r ciX2}
+ci_spi <- ci(Omega_6$X2, method = "SPI") # default is 95%
+ci_spi
+
+p2 <- ggplot(Omega_6, aes(x=X2)) + 
+  geom_histogram(binwidth=10, color="black", fill="white")+
+  theme_classic()+
+  # SPI in blue
+  geom_vline(xintercept = ci_spi$CI_low, color = "blue", linewidth = 0.5) +
+  geom_vline(xintercept = ci_spi$CI_high, color = "blue", linewidth = 0.5)+ 
+  ggtitle("Credible Interval for Covarience")
+p2
+
+rm(ci_spi)
+```
+
+```{r ciX3}
+ci_spi <- ci(Omega_6$X3, method = "SPI") # default is 95%
+ci_spi
+
+p3 <- ggplot(Omega_6, aes(x=X3)) + 
+  geom_histogram(binwidth=10, color="black", fill="white")+
+  theme_classic()+
+  # SPI in blue
+  geom_vline(xintercept = ci_spi$CI_low, color = "blue", linewidth = 0.5) +
+  geom_vline(xintercept = ci_spi$CI_high, color = "blue", linewidth = 0.5)+ 
+  ggtitle("Credible Interval for VarAs")
+p3
+
+rm(ci_spi)
+```
+
+
+
+

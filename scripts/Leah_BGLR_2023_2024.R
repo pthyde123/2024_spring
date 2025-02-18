@@ -7,6 +7,7 @@ library(genomicMateSelectR)
 library(janitor)
 library(ggplot2)
 library(ggrepel) 
+library(dplyr)
 
 # read in phenotype data
 ##multi_location_data <- read.csv("/Users/leahtreffer/GitHub/Peter_2024_spring/Peter_2024_spring/data/2023_2024_multi_location.csv")
@@ -132,3 +133,251 @@ ETA <- list(list(X=incLocations, model="FIXED"),
 
 
 
+##################### 01/22/2025 #######################################
+## JL had some suggestions: Oat Accession and the K matrix were both originally used, but they are both for the independent effect of oat. K has the additional info from the GRM so it makes sense to use just that instead of both
+## Will also concider general mixing ability vs Producer/Associative effects
+
+# This part stays the same: 
+
+#The R project should define the working directory properly for both of us and we can leave it out.  We could also use the "here" package the JL and Mirza are into.
+getwd()
+
+
+#### Library ####
+
+library(vcfR)  # https://grunwaldlab.github.io/Population_Genetics_in_R/reading_vcf.html
+library(tidyverse)
+library(genomicMateSelectR) #Cool this is Marnin's
+##https://wolfemd.github.io/genomicMateSelectR/reference/index.html
+library(rrBLUP)
+
+
+#### Import and set data ####
+
+# Importing Phenotype file (Leah complied in other scripts and added a copy to the shared directory)
+multi_location_data <- read.csv("data/2023_2024_multi_location.csv")  ##pth the previous file path will not work on both of our computers.
+
+multi_location_data <- multi_location_data %>%
+  mutate(total_grain = oat_yield + coalesce(pea_yield, 0)) # new column for total plot grain yield
+
+#list of accessions in alphabetical order, the same as "incOatAcc" # this is not needed anymore
+accessions_48 <- multi_location_data %>% 
+  select(germplasmName) %>% 
+  arrange(germplasmName) %>% 
+  unique()
+
+accessions_48$germplasmName
+
+
+# GRM strait from t3, cool, but it looks like not all the accessions from Juan are on t3. we are missing 2 but we can move forward
+GRM <- read_tsv("data/SOPF_48_GRM_t3.tsv")  
+# Genotypes from t3
+vcf <- read.vcfR("data/BreedBaseGenotypesDownload.vcf")  ## this still only 34 genotypes
+
+
+
+### BGLR set up####
+
+
+grainWgt <- multi_location_data %>%
+  mutate(oatYield = oat_yield) %>%
+  mutate(peaYield = pea_yield) %>%
+  mutate(totalYield = total_grain) %>%
+  mutate(peaAcc = peaName) %>%
+  mutate(blockNumberF=as.factor(paste(studyYear, location, blockNumber))) %>% #block factor
+  select(blockNumberF, studyYear, location, blockNumber,
+         plotNumber, management, germplasmName, peaAcc, oatYield, peaYield, totalYield) 
+
+# remove rows from the data file only if they have an NA value for both oat and pea yield
+# NAs were messing with the ability to calculate the covariance matrix correctly
+grainWgt <- grainWgt[!(is.na(grainWgt$oatYield) & is.na(grainWgt$peaYield)), ] 
+
+
+#pth: the na's for the mono pea accession were causing error 
+#Error in chol.default(S) : the leading minor of order 1 is not positive
+#this fixed the error, but is it correct
+grainWgt <- grainWgt %>% 
+  mutate(peaAcc = if_else(is.na(peaAcc), "none", peaAcc))  
+
+
+grainWgt
+
+
+
+### Create matrix for response and factors#### 
+
+yTraits <- as.matrix(dplyr::select(grainWgt, contains("Yield")))# pulls oat yield and pea yield ; taking factors with yield in them from grain weight table and making them a matrix # could have as many y variables in the matrix as you want, will run each on their own but no limit to what matrix holds
+#factors into matrices
+incLocations <- model.matrix(~ -1 + location, grainWgt) # 0,1 for if plots existed in given location or not; going into grain weight table, pulling out location data, and turns it into 0,1 somehow 
+incBlocks <- model.matrix(~ -1 + blockNumberF, grainWgt)
+incOatAcc <- model.matrix(~ -1 + germplasmName, grainWgt)
+incPeaAcc <- model.matrix(~ -1 + peaAcc, grainWgt)
+incYear <- model.matrix(~ -1 + studyYear, grainWgt) #year factor
+incMngt <- model.matrix(~ -1 + management, grainWgt) # monoculture/intercrop factor
+
+# Remove 'germplasmName' from the beginning of each column name in incOatAcc
+#colnames(incOatAcc) <- gsub("^germplasmName", "", colnames(incOatAcc))
+
+#### Create GRM and K ####
+
+GRM <- GRM %>%    #GRM is pulled from t3, 2 accessions are missing, they get neutral values, I think this is ok for this selection
+  select(order(colnames(GRM))) %>% # put columns(accessions) in alpha order to match incOatAcc
+  arrange(stock_uniquename) %>% # put rows(accessions) in alpha order to match incOatAcc
+  select(-stock_uniquename)  # remove stock_uniquename 
+
+GRM <- as.matrix(GRM)  # convert GRM to matrix
+
+#  use K = Z %*% GRM %*% t(Z),  Z is incidence matrix
+K = incOatAcc %*% GRM %*% t(incOatAcc)
+
+# *** either here or later down, I need to get the oat names related to this matrix.
+# this will let me add them to the tibble table so the effect values are shown with the oat name
+# columns of incOatAcc should(?) match column order in K
+  # so use order of colnames(incOatAcc) to name columns in K
+names <- colnames(incOatAcc)
+
+
+
+# new
+
+# list of factor matrices
+ETA <- list(list(X=incLocations, model="FIXED"),
+            list(X=incBlocks, model="BRR"),
+            list(X=incPeaAcc, model="BRR"),
+            list(X=incYear, model="BRR"),
+            list(X=incMngt, model="BRR"),
+            list(K = K, model="RKHS")) 
+
+
+#### BGLR Model ####
+
+tst2 <- BGLR::Multitrait(yTraits, ETA, intercept=TRUE,
+                         resCov=list(df0=4,S0=NULL,type="UN"),
+                         R2=0.5,
+                         nIter=10000, burnIn=2000,
+                         thin=10, saveAt="",verbose=FALSE)
+
+#### Pull out effect scores####
+
+oatEff <- tst2$ETA[[6]]$u # look at effect of K (accession with GRM); since it is RKHS use u (varU)
+
+plot(oatEff, xlab="PrEff", ylab="AsEff",
+     cex.lab=1.3, cex.axis=1.3, pch=16)
+
+oatEffSD <- tst2$ETA[[6]]$SD.beta
+
+# map names back to K matrix
+incOatAcc_names <- colnames(incOatAcc) # Extract the column names of incOatAcc
+# K's row and column indices are based on the rows of incOatAcc during the multiplication
+K_names <- incOatAcc_names  # Use these names in the order they correspond to K
+# Save the names in the same order as they occur in K
+names_in_K_order <- K_names
+
+# add oat names to identify rows
+oatName<-colnames(ETA[[3]]$X) %>% 
+  as_tibble() %>% 
+  mutate("oatName" = str_remove(value,"germplasmName")) %>% 
+  select(oatName)
+
+
+colnames(oatEff) <- c("PrEff", "AsEff")
+rownames(oatEff) <- c(oatName$oatName)
+
+#### Crossing Selections ####
+
+### top SI_1 
+oatEff %>% 
+  as_tibble(rownames = NA) %>% 
+  rownames_to_column() %>% 
+  mutate(SI_1 = (PrEff + AsEff)) %>% 
+  mutate(SI_2 = (PrEff - AsEff)) %>% 
+  mutate(SI_3 = (PrEff + 2*AsEff)) %>% 
+  mutate(SI_4 = (PrEff - 2*AsEff)) %>% 
+  arrange(-SI_1)
+
+### top SI_2
+oatEff %>% 
+  as_tibble(rownames = NA) %>% 
+  rownames_to_column() %>% 
+  mutate(SI_1 = (PrEff + AsEff)) %>% 
+  mutate(SI_2 = (PrEff - AsEff)) %>% 
+  arrange(-SI_2)
+
+
+#Selections, hmm lots of overlap in these groups 
+
+oatEff %>% 
+  as_tibble(rownames = NA) %>% 
+  rownames_to_column() %>% 
+  mutate(SI_1 = (PrEff + AsEff)) %>% 
+  mutate(SI_2 = (PrEff - AsEff)) %>% 
+  filter(SI_1 > 14 | SI_2 > 14) 
+
+
+
+
+oatEff %>% 
+  as_tibble(rownames = NA) %>% 
+  rownames_to_column() %>% 
+  mutate(SI_1 = (PrEff + AsEff)) %>% 
+  mutate(SI_2 = (PrEff - AsEff)) %>% 
+  filter(SI_1 > 14 | SI_2 > 8.31) %>% # found this number from the previous two,
+  
+  write.table("clipboard",sep="\t",row.names = F)  # planted these 12-24-24
+# a little shoot first, we have plenty of seed
+
+
+
+# try taking OatAcc out of ETA
+# needs to be variation in Pr and As effects
+# if tightly correlated, there isnt much variation in diagonal (general mixing ability)
+
+###################### General Mixing Ability #################################
+# fit the general mixing ability (total plot yield) form and PR/AS form of model
+
+library(ggplot2)
+
+# Create the ggplot
+ggplot(data = grainWgt, aes(x = seq_along(totalYield), y = totalYield, color = location)) +
+  geom_point(size = 3) +  # Adjust point size
+  labs(x = "Index", y = "Total Yield", title = "Grain Weight Total Yield by Location", color = "Location") +
+  theme_minimal()  # Use a clean theme
+
+
+
+# Create the ggplot
+ggplot(data = grainWgt, aes(x = seq_along(totalYield), y = totalYield, color = studyYear, shape = location)) +
+  geom_point(size = 3) +  # Adjust point size
+  labs(
+    x = "Index",
+    y = "Total Yield",
+    title = "Grain Weight Total Yield by Year and Location",
+    color = "Year",
+    shape = "Location"
+  ) +
+  theme_minimal()  # Use a clean theme
+
+
+#IL17-7339 and IL17-7334 need to be the same
+# call them the same thing
+# will now have 47 col
+
+# change the GRM: averge those two columns, average those two rows
+# don't need to do the 0.1 diagonal this way
+
+# calculate mean of diagonal of GRM
+# in teh GRM: insert the mean of the diagnoal in the LEGGET and NUBERG (without the 1s)
+
+# beta = BLULP
+# Omaga = variance
+
+# Omage6.data make histogram of distribution and summary stats
+  # first num is Pr of oat and second is variation for the As of oat on pea
+  # VarGMAoat = VarPr + VarAs + 2Cov(Pr,As)
+  # in Omage6.data: first = Pr, second = Cov, third = As
+
+  # 95% CI = credible interval (google how to get this)
+  # if zero is in CI, no confidence was dif than zero
+
+#GMA:
+# is variance 

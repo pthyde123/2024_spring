@@ -93,9 +93,15 @@ ETA <- list(list(X=incLocations, model="FIXED"),
             list(X=incYear, model="BRR"),
             list(X=incMngt, model="BRR"),
             list(K = K, model="RKHS")) 
+ETA01 <- list(list(X=incLocations, model="FIXED"),
+            list(X=incBlocks, model="BRR"),
+            list(X=incPeaAcc, model="BRR"),
+            list(X=incYear, model="BRR"),
+            list(X=incMngt, model="BRR"),
+            list(K = K01, model="RKHS")) 
+
 
 # the order of these is critical: nothing is labeled in matrices, so we need to know it's position to pull the right info out of results (through it's number rather than a name)
-
 
 
 #### BGLR Model ####
@@ -108,11 +114,17 @@ tst2 <- BGLR::Multitrait(yTraits, ETA, intercept=TRUE,
                          R2=0.5,
                          nIter=10000, burnIn=2000,
                          thin=10, saveAt="",verbose=FALSE)
+tst3 <- BGLR::Multitrait(yTraits, ETA01, intercept=TRUE,
+                         resCov=list(df0=4,S0=NULL,type="UN"),
+                         R2=0.5,
+                         nIter=10000, burnIn=2000,
+                         thin=10, saveAt="",verbose=FALSE)
 
 
 #### BGLR Results ####
 
 oatEff <- tst2$ETA[[3]]$beta
+
 
 plot(oatEff, xlab="PrEff", ylab="AsEff",
      cex.lab=1.3, cex.axis=1.3, pch=16)
@@ -126,7 +138,6 @@ oatName<-colnames(ETA[[3]]$X) %>%
   mutate("oatName" = str_remove(value,"germplasmName")) %>% 
   select(oatName)
 
-
 colnames(oatEff) <- c("PrEff", "AsEff")
 rownames(oatEff) <- c(oatName$oatName)
 
@@ -139,6 +150,8 @@ oatEff %>%
   rownames_to_column() %>% 
   mutate(SI_1 = (PrEff + AsEff)) %>% 
   mutate(SI_2 = (PrEff - AsEff)) %>% 
+  mutate(SI_3 = (PrEff + 2*AsEff)) %>% 
+  mutate(SI_4 = (PrEff - 2*AsEff)) %>% 
   arrange(-SI_1)
 
 ### top SI_2
@@ -171,8 +184,5 @@ oatEff %>%
 
   write.table("clipboard",sep="\t",row.names = F)  # planted these 12-24-24
   # a little shoot first, we have plenty of seed
-
-
-
 
 
