@@ -58,8 +58,7 @@ accessions_48 <- multi_location_data %>%
 # naming it IL17-733X
 
 multi_location_data2 <- multi_location_data %>%
-  mutate(germplasmName = ifelse(germplasmName == "IL17-7334", "IL17-733X", germplasmName),
-         germplasmName = ifelse(germplasmName == "IL17-7339", "IL17-733X", germplasmName))
+  mutate(germplasmName = ifelse(germplasmName %in% c("IL17-7334", "IL17-7339"), "IL17-733X", germplasmName))
 
 #list of accessions in alphabetical order
 accessions_47 <- multi_location_data2 %>% 
@@ -123,13 +122,21 @@ GRM2[,"NEWBURG" ] <- 0
 # Set all values in LEGGET and NEWBERG rows to 0
 GRM2["LEGGETT", ] <- 0
 GRM2["NEWBURG", ] <- 0
+# something wierd happened when I came back to re-run on March 5, the rownames are not there so I get this error: Error in `[<-`(`*tmp*`, "LEGGETT", , value = 0) : subscript out of bounds
+# easy fix is to just call by row number
+GRM2[20, ] <- 0 # LEGGETT is row 
+GRM2[27, ] <- 0 # NEWBURG is row 
 
 # replace cell values on diagonal
 GRM2["LEGGETT", "LEGGETT"] <- average_diagonal
 GRM2["NEWBURG", "NEWBURG"] <- average_diagonal
+# same March 5 issue here obviously 
+GRM2[20, "LEGGETT"] <- average_diagonal
+GRM2[27, "NEWBURG"] <- average_diagonal
 
 # make sure GRM is numeric matrix (reguired to make K matrix)
 #is.numeric(GRM2)
+#is.matrix(GRM2)
 #GRM2 <- as.matrix(GRM2)
 
 # still having troubles with the BGLR results reducing the number of oats
@@ -210,7 +217,9 @@ K = incOatAcc %*% GRM2 %*% t(incOatAcc)
 
 # try with the matrix with 0.001 added to the diagonal 
 K2 = incOatAcc %*% GRM3 %*% t(incOatAcc)
+
 ```
+
 
 list of factor matrices
 
