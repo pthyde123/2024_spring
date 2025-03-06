@@ -123,16 +123,17 @@ GRM2[,"NEWBURG" ] <- 0
 GRM2["LEGGETT", ] <- 0
 GRM2["NEWBURG", ] <- 0
 # something wierd happened when I came back to re-run on March 5, the rownames are not there so I get this error: Error in `[<-`(`*tmp*`, "LEGGETT", , value = 0) : subscript out of bounds
+#then March 6 it's back to normal hmm..
 # easy fix is to just call by row number
-GRM2[20, ] <- 0 # LEGGETT is row 
-GRM2[27, ] <- 0 # NEWBURG is row 
+#GRM2[20, ] <- 0 # LEGGETT is row 
+#GRM2[27, ] <- 0 # NEWBURG is row 
 
 # replace cell values on diagonal
 GRM2["LEGGETT", "LEGGETT"] <- average_diagonal
 GRM2["NEWBURG", "NEWBURG"] <- average_diagonal
 # same March 5 issue here obviously 
-GRM2[20, "LEGGETT"] <- average_diagonal
-GRM2[27, "NEWBURG"] <- average_diagonal
+#GRM2[20, "LEGGETT"] <- average_diagonal
+#GRM2[27, "NEWBURG"] <- average_diagonal
 
 # make sure GRM is numeric matrix (reguired to make K matrix)
 #is.numeric(GRM2)
