@@ -36,7 +36,7 @@ library(lmerTest)
 getwd()
 #setwd("/Users/leahtreffer/GitHub/Peter_2024_spring/Peter_2024_spring")
 
-setwd("~/Intercrop JLJ/2024_spring/2024_spring")
+#setwd("~/Intercrop JLJ/2024_spring/2024_spring")
 ```
 
 #### Import and set data ####
