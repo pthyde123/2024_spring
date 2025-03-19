@@ -114,6 +114,7 @@ tst2 <- BGLR::Multitrait(yTraits, ETA, intercept=TRUE,
                          R2=0.5,
                          nIter=10000, burnIn=2000,
                          thin=10, saveAt="",verbose=FALSE)
+
 tst3 <- BGLR::Multitrait(yTraits, ETA01, intercept=TRUE,
                          resCov=list(df0=4,S0=NULL,type="UN"),
                          R2=0.5,

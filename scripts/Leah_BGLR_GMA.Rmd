@@ -193,8 +193,8 @@ grainWgt$studyYear <- as.factor(grainWgt$studyYear)
 grainWgt$location <- as.factor(grainWgt$location)
 grainWgt$blockNumber <- as.factor(grainWgt$blockNumber)
 
-
-
+# try without monoculture plots
+grainWgt2 <- grainWgt[grainWgt$management != "monoculture", ]
 ```
 
 Create matrix for response and factors
@@ -208,6 +208,14 @@ incOatAcc <- model.matrix(~ -1 + germplasmName, grainWgt)
 incPeaAcc <- model.matrix(~ -1 + peaAcc, grainWgt)
 incYear <- model.matrix(~ -1 + studyYear, grainWgt) #year factor
 incMngt <- model.matrix(~ -1 + management, grainWgt) # monoculture/intercrop factor
+
+# re-do without monoculture plots
+yTraits2 <- as.matrix(dplyr::select(grainWgt2, contains("Yield")))
+incLocations2 <- model.matrix(~ -1 + location, grainWgt2) 
+incBlocks2 <- model.matrix(~ -1 + blockNumberF, grainWgt2)
+incOatAcc2 <- model.matrix(~ -1 + germplasmName, grainWgt2)
+incPeaAcc2 <- model.matrix(~ -1 + peaAcc, grainWgt2)
+incYear2 <- model.matrix(~ -1 + studyYear, grainWgt2)
 ```
 
 Create K matrix
@@ -247,6 +255,7 @@ bglr_model <- BGLR::Multitrait(yTraits, ETA, intercept=TRUE,
                          R2=0.5,
                          nIter=10000, burnIn=2000,
                          thin=10, saveAt="",verbose=FALSE)
+
 ```
 
 BGLR Results
