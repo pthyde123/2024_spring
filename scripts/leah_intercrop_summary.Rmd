@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "Intercrop Summary"
 author: "Leah Treffer"
 date: "2025-03-31"
 output: html_document
@@ -8,9 +8,6 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-
-
-<br>
 
 ## Packages
 ```{r,  echo=FALSE}
@@ -66,7 +63,8 @@ library(knitr)
 ## Load data files
 
 ```{r,  include=FALSE}
-multi_location_data <- read.csv('data/leah_multi_location_data.csv")
+multi_location_data <- read.csv('data/leah_multi_location_data.csv')
+multi_location_data <- multi_location_data[, !names(multi_location_data) %in% "X"]
 ```
 
 for a specific genotype, what's it's mean and se of grain yield
@@ -125,6 +123,7 @@ summary_stats_oat2 <- data %>%
     str_detect(studyName, "2023_Urbana") ~ "IL_2023",
     str_detect(studyName, "2023_Volga") ~ "SD_2023",
     str_detect(studyName, "2024_IL") ~ "IL_2024",
+    str_detect(studyName, "2023_Ithaca") ~ "NY_2023",
     str_detect(studyName, "2024_NY") ~ "NY_2024",
     str_detect(studyName, "2024_SD") ~ "SD_2024",
     str_detect(studyName, "2023_Madison") ~ "WI_2024",
@@ -135,6 +134,7 @@ summary_stats_oat2 <- data %>%
     se_value = sd(oat_yield, na.rm = TRUE) / sqrt(n()),  # Standard Error: SE = SD / sqrt(n)
     count = n()
   )
+summary_stats_oat2
 ```
 
 
@@ -181,7 +181,7 @@ multi_location_data %>%
 ```
 
 
-```{r}
+```{r, warning=FALSE}
 ## Yield Histogram for all locations
 custom_colors <- c(
   "2023.IL" = "#35B7AD",  # Dark Red for Illinois 2023
@@ -199,8 +199,8 @@ ggplot(multi_location_data, aes(x = oat_yield)) +
   geom_density(aes(color = interaction(studyYear, studyLoc)), size = 1) +
   scale_color_manual(values = custom_colors) +
   labs(
-    #title = "Distribution with Density Lines by Year and Location",
-    x = "Value",
+    title = "Histogram with Density Lines by Year and Location",
+    x = "Oat Grain Yield (g/m^2)",
     y = "Density",
     color = "Year & Location"
   ) +
@@ -212,8 +212,8 @@ ggplot(multi_location_data, aes(x = log(pea_yield+0.1))) +
   geom_density(aes(color = interaction(studyYear, studyLoc)), size = 1) +
   scale_color_manual(values = custom_colors) +
   labs(
-    #title = "Distribution with Density Lines by Year and Location",
-    x = "Value",
+    title = "Histogram with Density Lines by Year and Location",
+    x = "Oat Grain Yield log(g/m^2)",
     y = "Density",
     color = "Year & Location"
   ) +
@@ -231,10 +231,7 @@ rm(custom_colors)
 multi_location_data$studyName <- as.character(multi_location_data$studyName)
 multi_location_data$studyYear <- as.factor(multi_location_data$studyYear)
 multi_location_data$studyLoc <- as.factor(multi_location_data$studyLoc)
-multi_location_data$replicate <- as.factor(multi_location_data$replicate)
 multi_location_data$blockNumber <- as.factor(multi_location_data$blockNumber)
-multi_location_data$rowNumber <- as.factor(multi_location_data$rowNumber)
-multi_location_data$colNumber <- as.factor(multi_location_data$colNumber)
 multi_location_data$plotNumber <- as.character(multi_location_data$plotNumber)
 multi_location_data$germplasmName <- as.character(multi_location_data$germplasmName)
 multi_location_data$peaName <- as.character(multi_location_data$peaName)
@@ -243,12 +240,12 @@ multi_location_data$observationLevel <- as.character(multi_location_data$observa
 multi_location_data$observationUnitName <- as.character(multi_location_data$observationUnitName)
 multi_location_data$oat_yield <- as.numeric(multi_location_data$oat_yield)
 multi_location_data$pea_yield <- as.numeric(multi_location_data$pea_yield)
-multi_location_data$total_grain <- as.numeric(multi_location_data$total_grain)
 multi_location_data$oat_fraction <- as.numeric(multi_location_data$oat_fraction)
 ```
 
 
-
+Next need some kind of statistical analysis even if its a first attempt 
+yield ~ location + genotype + management + year + (1|rep)
 
 
 
@@ -260,6 +257,13 @@ In NY and IL: next to each intercrop plot was an oat monoculture of the same oat
 
 data2 <- read.csv("data/leah_2024_NY_SpringOatPea_cleaned.csv")
 
+# pea type from meta data
+types <- data2[,c("peaName","pea_type")]
+# Create a new table with unique entries based on 'Column1'
+types <- types %>% distinct(peaName, .keep_all = TRUE)
+#remove first row (na)
+types <- types[-1,]
+
 data3 <- data2 %>%
   mutate(pair = ceiling(plotNumber / 2))%>%
   arrange(pair)                
@@ -267,21 +271,6 @@ data3 <- data2 %>%
 # just plot level (yield data)
 data3_plotlvl <- data3 %>%
   filter(observationLevel == "plot")
-
-data3_pairs <- data3_plotlvl %>%
-  group_by(pair) %>%
-  mutate(total_yield = oat_grain_yield + coalesce(pea_grain_yield, 0))%>%
-  mutate(management = factor(ifelse(pea_type == "monoculture", "monoculture", "intercrop")))%>%
-  summarise(
-    germplasmName = first(germplasmName),                     # Get the germplasmName (same for each pair)
-    peaName = na.omit(peaName)[1],                            # Get the non-NA peaName (first non-NA value)
-    intercrop_yield = total_yield[management == "intercrop"], # Get the yield from intercrop
-    monoculture_yield = total_yield[management == "monoculture"], # Get the yield from monoculture
-    yield_difference = intercrop_yield - monoculture_yield,   # Calculate the difference (intercrop - monoculture)
-  ) %>%
-  ungroup()%>%
-  left_join(types, by = "peaName")%>%
-  select("germplasmName", "peaName", "pea_type", "intercrop_yield", "monoculture_yield", "yield_difference")
 
 data3_pairs_oat <- data3_plotlvl %>%
   group_by(pair) %>%
@@ -298,26 +287,14 @@ data3_pairs_oat <- data3_plotlvl %>%
   left_join(types, by = "peaName")%>%
   select("germplasmName", "peaName", "pea_type", "intercrop_yield", "monoculture_yield", "yield_difference")
 
-IL <- Illinois24 %>%
+# HERE ISN'T WORKING
+
+IL <- multi_location_data %>%
+  filter(location=="IL")%>%
+  mutate(plotNumber == as.numeric(plotNumber))%>%
   arrange(plotNumber)%>%
   mutate(pair = ceiling(plotNumber / 2))%>%
   arrange(pair)                
-
-
-IL_pairs <- IL %>%
-  group_by(pair) %>%
-  mutate(total_yield = oat_yield + coalesce(pea_yield, 0))%>%
-  mutate(management = factor(ifelse(pea_type == "monoculture", "monoculture", "intercrop")))%>%
-  summarise(
-    germplasmName = first(germplasmName),                     # Get the germplasmName (same for each pair)
-    peaName = na.omit(peaName)[1],                            # Get the non-NA peaName (first non-NA value)
-    intercrop_yield = total_yield[management == "intercrop"], # Get the yield from intercrop
-    monoculture_yield = total_yield[management == "monoculture"], # Get the yield from monoculture
-    yield_difference = intercrop_yield - monoculture_yield,   # Calculate the difference (intercrop - monoculture)
-  ) %>%
-  ungroup()%>%
-  left_join(types, by = "peaName")%>%
-  select("germplasmName", "peaName", "pea_type", "intercrop_yield", "monoculture_yield", "yield_difference")
 
 IL_pairs_oat <- IL %>%
   group_by(pair) %>%
@@ -379,5 +356,7 @@ ggplot(combined_pairs_oat, aes(x = oat_location, y = peaName, fill = yield_diffe
 
 ```
 
+
+BGLR goes here
 
 
