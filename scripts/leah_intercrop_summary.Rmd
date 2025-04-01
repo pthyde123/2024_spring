@@ -9,7 +9,6 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Packages
 ```{r,  echo=FALSE, include=FALSE}
 library(RColorBrewer)
 library(tidyverse)
@@ -38,10 +37,9 @@ library(here)
 here::i_am("scripts/leah_intercrop_summary.Rmd")
 ```
 
-## Load data files
 
 ```{r load_data,  include=FALSE, echo=FALSE}
-multi_location <- read.csv('data/leah_multi_location_data.csv')
+multi_location <- read.csv(here('data/leah_multi_location_data.csv'))
 multi_location <- multi_location[, !names(multi_location) %in% "X"]
 
 data <- multi_location %>%
@@ -56,7 +54,7 @@ This data set includes 48 oat accessions and 12 pea acesses (5 forage type peas 
 ### Summary data across locations
 
 mean oat grain yield for each entry (averaged across locations)
-```{r oat_sum, echo=FALSE}
+```{r oat_sum, echo=FALSE, warning=FALSE, message=FALSE}
 #for a specific genotype, what's it's mean and se of grain yield
 #what is the mean oat value in intercrop
 #what is the mean oat value in monoculture
@@ -71,7 +69,7 @@ summary_stats <- data %>%
 summary_stats
 ```
 mean pea grain yield for each entry (averaged across locations)
-```{r pea_sum, echo=FALSE}
+```{r pea_sum, echo=FALSE, warning=FALSE, message=FALSE}
 #what is the mean pea grain yield in intercrop
 #what is the mean pea grain yield in monoculture
 summary_stats_pea2 <- data %>%
@@ -88,7 +86,7 @@ summary_stats_pea2
 
 mean oat grain yield for each entry (average of the intercrop plots within location)
 
-```{r oat_sum2, echo=FALSE}
+```{r oat_sum2, echo=FALSE, warning=FALSE, message=FALSE}
 # mean oat grain yield of each location 
 summary_stats_oat2 <- data %>%
   filter(Planting_Group == "Intercrop") %>%
@@ -156,6 +154,7 @@ multi_location %>%
 Another way to look at oat grain yield - histograms
 
 grain yield within location is normally distributed, but looks bimodal when all locations are combined. 
+
 ```{r grain_hist, warning=FALSE, echo=FALSE}
 ## Yield Histogram for all locations
 custom_colors <- c(
@@ -224,29 +223,31 @@ multi_location <- multi_location %>%
 
 ```
 
-## oat yield observations different by location, year, management, and somewhat by oat accession 
+#### oat yield observations different by location, year, management, and somewhat by oat accession 
 
 yield ~ location(NY,IL,SD,WI) + oat genotype + management(intercrop vs mono) + year (2022, 2023) + (1|rep)
 
-differences between locations are significant
-differences between years are significant 
-differences between inter/mono groups are significant 
-some differences in germplasm
+
 
 ```{r model, echo=FALSE}
 model <- lmer(oat_yield ~ location + germplasmName + Planting_Group + studyYear + (1|blockNumber), data=multi_location)
 #summary(model)
 anova(model)
+
+#differences between locations are significant
+#differences between years are significant 
+#differences between inter/mono groups are significant 
+#some differences in germplasm
 ```
 
-### Difference in oat performance between intercrop and monoculture 
+#### Difference in oat performance between intercrop and monoculture 
 
 In 2024 NY and IL: next to each intercrop plot was an oat monoculture of the same oat genotype. Planted at same density (?) pretty sure of that anyways. 
 
 ```{r heatmap, echo=FALSE}
 # is the total grain yield of the plot higher in the intercrop than the monoculture
 
-data2 <- read.csv("data/leah_2024_NY_SpringOatPea_cleaned.csv")
+data2 <- read.csv(here("data/leah_2024_NY_SpringOatPea_cleaned.csv"))
 
 # pea type from meta data
 types <- data2[,c("peaName","pea_type")]
@@ -330,7 +331,7 @@ ggplot(combined_pairs_oat, aes(x = oat_location, y = peaName, fill = yield_diffe
 ```
 
 
-#### BGLR
+# BGLR
 
 For this, I am using 2022 and 2023 data for NY, IL, and SD
 
@@ -338,13 +339,13 @@ We also combine yield data for IL17-7339 and IL17-7334 and average thier GRM bec
 
 This leaves us with 47 oat accessions and 12 pea accessions, with information about oat and pea yield for three sites and 2 years. 
 
-# Import and set data
+#### Import and set data
 
 Observation data
 
 ```{r phenotypes, message=FALSE}
 
-multi_location_data <- read.csv("data/2023_2024_multi_location.csv")
+multi_location_data <- read.csv(here("data/2023_2024_multi_location.csv"))
 
 #list of accessions in alphabetical order
 accessions_48 <- multi_location_data %>% 
@@ -369,9 +370,9 @@ accessions_47 <- multi_location_data2 %>%
 
 Genomic Relationship Matrix 
 
-```{r GRM, message=FALSE}
+```{r GRM, message=FALSE, include=FALSE}
 # GRM pulled strait from t3
-GRM <- read_tsv("data/SOPF_48_GRM_t3.tsv")  
+GRM <- read_tsv(here("data/SOPF_48_GRM_t3.tsv"))  
 
 # IL17-7334 and IL17-7339 were very similar, so we are combining, not considering them as separate accessions
 # need to average the values from the rows and columns of those accessions
@@ -449,9 +450,6 @@ diag(GRM3) <- diag(GRM3) + 0.0001
 
 ```
 
-
-#### BGLR ####
-
 data for ytraits
 
 ```{r obsdata, message=FALSE}
@@ -483,11 +481,11 @@ grainWgt$blockNumber <- as.factor(grainWgt$blockNumber)
 grainWgt2 <- grainWgt[grainWgt$management != "monoculture", ]
 ```
 
-## means of oat and pea grain yield for each environment
+### means of oat and pea grain yield for each environment
 
 ```{r GrainMean, warning=FALSE}
 
-grainWgt %>%
+grainWgt2 %>%
   pivot_longer(oatYield:peaYield,
                names_to = "grain_type", values_to = "grain_g") %>%
   mutate(grain_type = str_replace(grain_type, "_yield", "")) %>%
@@ -522,9 +520,7 @@ grainWgt %>%
 year_list <- c("2023", "2024")
 location_list <- c("NY", "IL", "SD")
 
-# remove monoculture plots, just compare means of intercrop plots
-grainWgt2 <- grainWgt %>% 
-  filter(management != "monoculture")
+# just compare means of intercrop plots
 
 for (i in year_list){
   for (j in location_list) {
@@ -545,12 +541,13 @@ for (i in year_list){
 Create matrix for response and factors
 
 ```{r factors, message=FALSE}
-yTraits <- as.matrix(dplyr::select(grainWgt, contains("Yield")))# pulls oat yield and pea yield ; taking factors with yield in them from grain weight table and making them a matrix # could have as many y variables in the matrix as you want, will run each on their own but no limit to what matrix holds
+yTraits <- as.matrix(dplyr::select(grainWgt2, contains("Yield")))# pulls oat yield and pea yield ; taking factors with yield in them from grain weight table and making them a matrix # could have as many y variables in the matrix as you want, will run each on their own but no limit to what matrix holds
 #factors into matrices
-incLocations <- model.matrix(~ -1 + location, grainWgt) # 0,1 for if plots existed in given location or not; going into grain weight table, pulling out location data, and turns it into 0,1 somehow 
-incBlocks <- model.matrix(~ -1 + blockNumberF, grainWgt)
-incPeaAcc <- model.matrix(~ -1 + peaAcc, grainWgt)
-incYear <- model.matrix(~ -1 + studyYear, grainWgt) #year factor
+incLocations <- model.matrix(~ -1 + location, grainWgt2) # 0,1 for if plots existed in given location or not; going into grain weight table, pulling out location data, and turns it into 0,1 somehow 
+incBlocks <- model.matrix(~ -1 + blockNumberF, grainWgt2)
+incOatAcc <- model.matrix(~ -1 + germplasmName, grainWgt2)
+incPeaAcc <- model.matrix(~ -1 + peaAcc, grainWgt2)
+incYear <- model.matrix(~ -1 + studyYear, grainWgt2) #year factor
 ```
 
 Create K matrix
@@ -577,7 +574,7 @@ ETA <- list(list(X=incLocations, model="FIXED"),
 
 BGLR Model
 
-```{r BGLR}
+```{r BGLR, message=FALSE}
 # this will take a few seconds to run, ?how doe we evaluate the best number of nIter and burnIn?
 # will set.seed make this reproducible?
 
@@ -602,6 +599,7 @@ plot(oatEff, xlab="PrEff", ylab="AsEff",
 # add oat names to effect results
 colnames(oatEff) <- c("PrEff", "AsEff")
 rownames(oatEff) <- c(accessions_47$germplasmName)
+oatEff
 
 # General Mixing Ability
 # GMA_oat = Pr_oat + As_oat-on-pea
@@ -613,8 +611,6 @@ plot(oatGMA, xlab = "Index (accession)", main = "GMA of 47 oat accessions")
 ### Variance
 
 ```{r var, warning=FALSE, message=FALSE}
-# Histogram of distribution and summary stats
-
 # Varience
 bglr_model[["ETA"]][[5]][["Cov"]][["Omega"]] # variance
 
@@ -623,7 +619,7 @@ bglr_model[["ETA"]][[5]][["Cov"]][["Omega"]] # variance
     # VarGMAoat = VarPr + VarAs + 2Cov(Pr,As)
     # first = Pr, second = Cov, third = As
 
-Omega_5 <- read_table("Omega_5.dat", col_names = FALSE) # read in Omage6.dat
+Omega_5 <- read_table(here("Omega_5.dat"), col_names = FALSE) # read in Omage5.dat
 
 #Variance[GeneralMixingAbility Oat]
 Omega_5$VarGMA <- Omega_5$X1 + Omega_5$X3 + 2*Omega_5$X2
@@ -665,10 +661,10 @@ p
 Analysis for each of the variances and covariances (i.e., for "X1", "X2", and "X3").  For example, is X2, the covariance significantly negative?  That is, does the credible interval overlap with 0?
 
 ```{r ciX1}
-ci_spi <- ci(Omega_6$X1, method = "SPI") # default is 95%
-ci_spi
+ci_spi <- ci(Omega_5$X1, method = "SPI") # default is 95%
+#ci_spi
 
-p1 <- ggplot(Omega_6, aes(x=X1)) + 
+p1 <- ggplot(Omega_5, aes(x=X1)) + 
   geom_histogram(binwidth=10, color="black", fill="white")+
   theme_classic()+
   # SPI in blue
@@ -681,10 +677,10 @@ rm(ci_spi)
 ```
 
 ```{r ciX2}
-ci_spi <- ci(Omega_6$X2, method = "SPI") # default is 95%
-ci_spi
+ci_spi <- ci(Omega_5$X2, method = "SPI") # default is 95%
+#ci_spi
 
-p2 <- ggplot(Omega_6, aes(x=X2)) + 
+p2 <- ggplot(Omega_5, aes(x=X2)) + 
   geom_histogram(binwidth=10, color="black", fill="white")+
   theme_classic()+
   # SPI in blue
@@ -697,10 +693,10 @@ rm(ci_spi)
 ```
 
 ```{r ciX3}
-ci_spi <- ci(Omega_6$X3, method = "SPI") # default is 95%
-ci_spi
+ci_spi <- ci(Omega_5$X3, method = "SPI") # default is 95%
+#ci_spi
 
-p3 <- ggplot(Omega_6, aes(x=X3)) + 
+p3 <- ggplot(Omega_5, aes(x=X3)) + 
   geom_histogram(binwidth=10, color="black", fill="white")+
   theme_classic()+
   # SPI in blue
