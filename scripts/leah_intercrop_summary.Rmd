@@ -554,7 +554,7 @@ Create K matrix
 
 ```{r K, message=FALSE}
 #  use K = Z %*% GRM %*% t(Z),  Z is incidence matrix
-K2 = incOatAcc %*% GRM3 %*% t(incOatAcc)
+K = incOatAcc %*% GRM3 %*% t(incOatAcc)
 
 ```
 
@@ -566,7 +566,7 @@ ETA <- list(list(X=incLocations, model="FIXED"),
             list(X=incBlocks, model="BRR"),
             list(X=incPeaAcc, model="BRR"),
             list(X=incYear, model="BRR"),
-            list(K = K2, model="RKHS")) 
+            list(K = K, model="RKHS")) 
 
 # the order of these is critical: nothing is labeled in matrices, so we need to know it's position to pull the right info out of results (through it's number rather than a name)
 
